@@ -239,12 +239,12 @@ export default function InsuranceApp() {
       {/* Divider */}
       <line x1={cx-(innerR-4)} y1={cy} x2={cx+(innerR-4)} y2={cy} stroke="#c8d8c0" strokeWidth="1.2" />
 
-      {/* Upper: 保險・類型總覽 — 1.5×: 20→30, 9.5→14 */}
-      <text x={cx} y={cy - 18} textAnchor="middle" dominantBaseline="middle"
+      {/* Upper: 保險・類型總覽 */}
+      <text x={cx} y={cy - 28} textAnchor="middle" dominantBaseline="middle"
         fontSize="30" fill="#6a5a50" fontWeight="700" style={{ pointerEvents: "none" }}>
         保險
       </text>
-      <text x={cx} y={cy - 2} textAnchor="middle" dominantBaseline="middle"
+      <text x={cx} y={cy - 10} textAnchor="middle" dominantBaseline="middle"
         fontSize="14" fill="#9a8a80" style={{ pointerEvents: "none" }}>
         類型總覽
       </text>
