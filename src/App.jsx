@@ -11,20 +11,18 @@ const centerItem = {
 };
 
 const insuranceData = [
-  { id: 1, name: "壽險",         color: "#C9A9A4", icon: "🏠", subtitle: "一般身故・家庭責任",             description: "任何原因而死亡。\n重要性：喪葬費、家庭責任、債務。" },
-  { id: 2, name: "意外失能",     color: "#A4B5C9", icon: "⚡", subtitle: "一次性給付・11歲至80歲",          description: "好不了又死不了。\n重要性：失去工作、中斷收入（殘廢生活扶助金）、生活重新適應、單身找對象不容易。" },
-  { id: 3, name: "意外日額",     color: "#C9B9A4", icon: "🏥", subtitle: "少額・保額×住院日數",             description: "外力突發／非疾病。\n重要性：請假扣薪、醫藥費損失、驚魂未定。" },
-  { id: 9, name: "意外實支",     color: "#D4B89A", icon: "🧾", subtitle: "意外花費實報實銷・限額內給付",    description: "花多少賠多少（限額內給付收據）。\n重要性：請假扣薪、醫藥費損失、驚魂未定。" },
-  { id: 4, name: "住院實支實付", color: "#A4C9B9", icon: "💊", subtitle: "多花多賠・限額內實報實銷",        description: "花多少賠多少（限額內給付收據）。\n重要性：二代健保自費項目增加、民眾荷包失血、只要額度夠醫生放心治療。" },
-  { id: 5, name: "住院日額",     color: "#C4C0A0", icon: "📋", subtitle: "多花多賠・病房手術療養",          description: "定額給付住院天數（診斷證明書）。\n重要性：病房費、薪資損失、看護費、交通費營養品、減少家人負擔。" },
-  { id: 6, name: "癌症",         color: "#B4A4C9", icon: "🎗", subtitle: "可選日額型・彈性給付",            description: "惡性腫瘤。\n重要性：昂貴標靶藥物費、治療過程長、影響工作收入、家人心情與經濟壓力大。" },
-  { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "經確診後一筆給付",               description: "七項重大疾病（病很重、花很多、拖很久、死不了）。\n重要性：復健安養治療時間長、收入中斷、生活費看護費龐大。" },
-  { id: 8, name: "長照",         color: "#C4A8B4", icon: "🌿", subtitle: "持續給付・長期條件每年／每月",    description: "長期失能無法自理（吃飯、如廁、移位等六項失能）。\n重要性：長期看護費昂貴、家人照護壓力龐大、生活品質嚴重受影響。" },
+  { id: 1, name: "壽險",         color: "#C9A9A4", icon: "🏠", subtitle: "一般身故・家庭責任",          description: "提供身故或完全失能時的一次性給付，保障家庭的經濟需求，確保遺屬生活品質不受影響。" },
+  { id: 2, name: "意外失能",     color: "#A4B5C9", icon: "⚡", subtitle: "一次性給付・11歲至80歲",       description: "因意外事故導致失能時，依失能等級（5%–100%）給付保額，最高可達保額的1倍。" },
+  { id: 3, name: "意外日額",     color: "#C9B9A4", icon: "🏥", subtitle: "少額・保額×住院日數",          description: "因意外住院時按日給付，包含骨折或住院等情況，適合補充基本的住院費用支出。" },
+  { id: 4, name: "住院實支實付", color: "#A4C9B9", icon: "💊", subtitle: "多花多賠・限額內實報實銷",     description: "依實際醫療花費在保額限度內理賠，包含病房費、手術費、自費藥材等，花多少賠多少。" },
+  { id: 5, name: "住院日額",     color: "#C4C0A0", icon: "📋", subtitle: "多花多賠・病房手術療養",       description: "按住院天數定額給付，包含病房費、手術費及療養費用，可選擇日額型保單彈性運用。" },
+  { id: 6, name: "癌症",         color: "#B4A4C9", icon: "🎗", subtitle: "可選日額型・彈性給付",         description: "確診癌症後依保單條款給付，可選擇日額型保單，彈性因應化療、放療等長期醫療支出。" },
+  { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "少額・保額×住院日數",          description: "取得健保重大傷病卡後給付，包含骨折、長期住院等情況，協助填補健保自負額的缺口。" },
+  { id: 8, name: "長照",         color: "#C4A8B4", icon: "🌿", subtitle: "持續給付・長期條件每年／每月", description: "符合長照認定條件後，每年或每月持續給付，保障長期失能或需要護理照顧的生活費用。" },
 ];
 
 // 權威說明：來自金管會、各大保險公司及專業保險資訊平台整理
 const authorityDescriptions = {
-  9: "因意外傷害產生的醫療費用，在保單限額內「花多少、賠多少」，涵蓋急診費、手術費、住院費及門診雜費等，正本單據方可申請。與意外日額險互補：日額險給固定現金，實支險補足實際支出。適合高自費風險族群，尤其有自費藥材或特殊手術需求者，建議優先配置於意外醫療保障中。",
   1: "被保險人身故或完全失能時，給付一筆保險金，讓遺屬有資金維持生活、償還債務或撫養子女。分為定期壽險（特定期間保障，適合家庭主要經濟支柱在子女成長期使用）與終身壽險（終生保障，採平準保費制，年齡增長保費不上漲）。壽險保額建議以「家庭年支出×10年」為基準。",
   2: "因意外事故導致身體機能永久受損，依失能等級1–11級給付保險金（1級最重，理賠100%；11級最輕，理賠5%）。屬於一次性給付，用於支付失能當下的高昂醫療費用及後續生活需求，無等待期。與失能扶助險不同，失能扶助險為持續型月給付，二者功能互補。",
   3: "因意外傷害住院時，按「日額×住院天數」給付，與實際花費無關。骨折即使未住院也可按嚴重程度申請給付。同一次住院最高給付365天，保費便宜且無等待期。適合高風險工作族群及希望住院期間有穩定現金流的人，可用來補貼薪資損失或住院期間額外支出。",
@@ -64,39 +62,6 @@ const authoritySubDescriptions = {
 const defaultSubDescriptions = Object.fromEntries(
   Object.values(subTypeData).flat().map((s) => [s.id, ""])
 );
-
-// 重大傷病各疾病別有效領證統計表（113年11月）— 資料來源：健保署
-const majorIllnessStats = [
-  { no:"01", name:"需積極或長期治療之癌症",                                         count:"488,032", people:"466,576" },
-  { no:"02", name:"先天性凝血因子異常（血友病）",                                   count:"1,874",   people:"1,867"   },
-  { no:"03", name:"嚴重溶血性及再生不良性貧血",                                     count:"1,498",   people:"1,489"   },
-  { no:"04", name:"慢性腎衰竭（尿毒症）必須定期透析治療者",                         count:"89,786",  people:"89,777"  },
-  { no:"05", name:"需終身治療之全身性自體免疫症候群",                               count:"141,991", people:"140,747" },
-  { no:"06", name:"慢性精神病",                                                      count:"191,495", people:"189,057" },
-  { no:"07", name:"先天性新陳代謝疾病",                                             count:"18,518",  people:"18,469"  },
-  { no:"08", name:"心、肺等之先天性畸型及染色體異常",                               count:"38,581",  people:"37,759"  },
-  { no:"09", name:"燒燙傷面積達全身20%以上；或顏面燒燙傷合併五官功能障礙者",       count:"289",     people:"288"     },
-  { no:"10", name:"接受器官移植",                                                    count:"19,007",  people:"17,528"  },
-  { no:"11", name:"小兒麻痺、腦性麻痺等之神經肌肉骨骼肺臟併發症（中度以上）",     count:"13,052",  people:"13,021"  },
-  { no:"12", name:"重大創傷（創傷嚴重程度分數≥16）",                               count:"12,580",  people:"12,580"  },
-  { no:"13", name:"因呼吸衰竭需長期使用呼吸器者",                                   count:"11,231",  people:"11,231"  },
-  { no:"14", name:"因腸道大量切除或慢性疾病引起嚴重營養不良者（全靜脈營養）",     count:"75",      people:"75"      },
-  { no:"15", name:"因潛水或減壓不當引起之嚴重型減壓病或空氣栓塞症",               count:"10",      people:"10"      },
-  { no:"16", name:"重症肌無力症",                                                    count:"6,196",   people:"6,194"   },
-  { no:"17", name:"先天性免疫不全症",                                               count:"216",     people:"217"     },
-  { no:"18", name:"脊髓損傷或病變所引起之神經肌肉皮膚骨骼心肺泌尿胃腸等併發症（中度以上）", count:"7,486", people:"7,436" },
-  { no:"19", name:"職業病",                                                          count:"1,375",   people:"1,375"   },
-  { no:"21", name:"多發性硬化症",                                                    count:"56",      people:"56"      },
-  { no:"22", name:"先天性肌肉萎縮症",                                               count:"362",     people:"362"     },
-  { no:"23", name:"外皮之先天畸形",                                                  count:"131",     people:"131"     },
-  { no:"24", name:"漢生病",                                                          count:"125",     people:"125"     },
-  { no:"25", name:"肝硬化症",                                                        count:"3,541",   people:"3,529"   },
-  { no:"26", name:"早產兒所引起之神經肌肉骨骼心臟肺臟等之併發症",                 count:"8",       people:"8"       },
-  { no:"27", name:"砷及其化合物之毒性作用（烏腳病）",                               count:"53",      people:"53"      },
-  { no:"28", name:"運動神經元疾病（中度以上或須使用呼吸器）",                       count:"94",      people:"94"      },
-  { no:"29", name:"庫賈氏病",                                                        count:"22",      people:"22"      },
-  { no:"30", name:"罕見疾病",                                                        count:"15,327",  people:"15,310"  },
-];
 
 function getSegmentPath(cx, cy, outerR, innerR, startAngle, endAngle) {
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -150,7 +115,6 @@ export default function InsuranceApp() {
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
   const [subEditing, setSubEditing] = useState(false);
   const [subEditText, setSubEditText] = useState("");
-  const openStatsTable = () => window.open("/重大傷病統計表.pdf", "_blank");
 
   // Active descriptions: authority mode or user-edited descriptions
   const activeDescriptions = useAuthority ? authorityDescriptions : descriptions;
@@ -275,12 +239,12 @@ export default function InsuranceApp() {
       {/* Divider */}
       <line x1={cx-(innerR-4)} y1={cy} x2={cx+(innerR-4)} y2={cy} stroke="#c8d8c0" strokeWidth="1.2" />
 
-      {/* Upper: 保險・類型總覽 */}
-      <text x={cx} y={cy - 40} textAnchor="middle" dominantBaseline="middle"
+      {/* Upper: 保險・類型總覽 — 1.5×: 20→30, 9.5→14 */}
+      <text x={cx} y={cy - 18} textAnchor="middle" dominantBaseline="middle"
         fontSize="30" fill="#6a5a50" fontWeight="700" style={{ pointerEvents: "none" }}>
         保險
       </text>
-      <text x={cx} y={cy - 13} textAnchor="middle" dominantBaseline="middle"
+      <text x={cx} y={cy - 2} textAnchor="middle" dominantBaseline="middle"
         fontSize="14" fill="#9a8a80" style={{ pointerEvents: "none" }}>
         類型總覽
       </text>
@@ -318,39 +282,16 @@ export default function InsuranceApp() {
           animation: "fadeIn 0.25s ease",
         }}>
           {/* Header row */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{
-                width: "44px", height: "44px", borderRadius: "12px",
-                background: selected.color,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px",
-              }}>{selected.icon}</div>
-              <div>
-                <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#3a2f28", fontWeight: 700 }}>{selected.name}</h2>
-                <p style={{ margin: 0, fontSize: "0.78rem", color: "#9a8a80" }}>{selected.subtitle}</p>
-              </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
+            <div style={{
+              width: "44px", height: "44px", borderRadius: "12px",
+              background: selected.color,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px",
+            }}>{selected.icon}</div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#3a2f28", fontWeight: 700 }}>{selected.name}</h2>
+              <p style={{ margin: 0, fontSize: "0.78rem", color: "#9a8a80" }}>{selected.subtitle}</p>
             </div>
-            {selected.id === 7 && (
-              <button
-                onClick={openStatsTable}
-                title="查看健保重大傷病統計表（原始PDF）"
-                style={{
-                  width: "36px", height: "36px", borderRadius: "9px", flexShrink: 0,
-                  background: selected.color, border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "opacity 0.18s",
-                }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "0.75"}
-                onMouseLeave={e => e.currentTarget.style.opacity = "1"}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3a2f28" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                  <line x1="3" y1="9" x2="21" y2="9"/>
-                  <line x1="3" y1="15" x2="21" y2="15"/>
-                  <line x1="9" y1="9" x2="9" y2="21"/>
-                </svg>
-              </button>
-            )}
           </div>
           <div style={{ height: "3px", borderRadius: "2px", background: `linear-gradient(to right, ${selected.color}, transparent)`, marginBottom: "18px" }} />
 
@@ -502,65 +443,18 @@ export default function InsuranceApp() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(160deg, #faf7f3 0%, #f4ede4 50%, #ede6dd 100%)",
+      background: "linear-gradient(135deg, #f8f5f0 0%, #f0ede8 100%)",
       fontFamily: "'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif",
       display: "flex", flexDirection: "column", alignItems: "center",
-      position: "relative", overflow: "hidden",
     }}>
-
-      {/* ── 背景裝飾層 ── */}
-      {/* 光暈球：右上角玫瑰色 */}
-      <div style={{ position:"fixed", top:"-180px", right:"-180px", width:"520px", height:"520px",
-        borderRadius:"50%", background:"radial-gradient(circle, rgba(201,169,164,0.18) 0%, transparent 70%)",
-        pointerEvents:"none", zIndex:0 }} />
-      {/* 光暈球：左下角鼠尾草綠 */}
-      <div style={{ position:"fixed", bottom:"-200px", left:"-160px", width:"560px", height:"560px",
-        borderRadius:"50%", background:"radial-gradient(circle, rgba(164,196,168,0.16) 0%, transparent 70%)",
-        pointerEvents:"none", zIndex:0 }} />
-      {/* 光暈球：左上角淡藍 */}
-      <div style={{ position:"fixed", top:"40%", left:"-220px", width:"440px", height:"440px",
-        borderRadius:"50%", background:"radial-gradient(circle, rgba(164,181,201,0.12) 0%, transparent 70%)",
-        pointerEvents:"none", zIndex:0 }} />
-      {/* 光暈球：右下角薰衣草 */}
-      <div style={{ position:"fixed", bottom:"5%", right:"-180px", width:"420px", height:"420px",
-        borderRadius:"50%", background:"radial-gradient(circle, rgba(180,164,201,0.11) 0%, transparent 70%)",
-        pointerEvents:"none", zIndex:0 }} />
-      {/* 點陣圖案 SVG */}
-      <svg style={{ position:"fixed", inset:0, width:"100%", height:"100%", pointerEvents:"none", zIndex:0, opacity:0.35 }}
-        xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="dots" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
-            <circle cx="1.5" cy="1.5" r="1.2" fill="#c8b8a8" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#dots)" />
-      </svg>
-      {/* 右側細線裝飾弧 */}
-      <svg style={{ position:"fixed", top:"10%", right:0, width:"180px", height:"420px", pointerEvents:"none", zIndex:0, opacity:0.18 }}
-        viewBox="0 0 180 420" xmlns="http://www.w3.org/2000/svg">
-        <path d="M 180 0 Q 20 210 180 420" fill="none" stroke="#a09080" strokeWidth="1"/>
-        <path d="M 180 40 Q 50 210 180 380" fill="none" stroke="#a09080" strokeWidth="0.6"/>
-        <path d="M 180 80 Q 80 210 180 340" fill="none" stroke="#a09080" strokeWidth="0.4"/>
-      </svg>
-      {/* 左側細線裝飾弧 */}
-      <svg style={{ position:"fixed", top:"10%", left:0, width:"180px", height:"420px", pointerEvents:"none", zIndex:0, opacity:0.18 }}
-        viewBox="0 0 180 420" xmlns="http://www.w3.org/2000/svg">
-        <path d="M 0 0 Q 160 210 0 420" fill="none" stroke="#a09080" strokeWidth="1"/>
-        <path d="M 0 40 Q 130 210 0 380" fill="none" stroke="#a09080" strokeWidth="0.6"/>
-        <path d="M 0 80 Q 100 210 0 340" fill="none" stroke="#a09080" strokeWidth="0.4"/>
-      </svg>
-
       {/* Header */}
       <div style={{
         width: "100%", boxSizing: "border-box",
-        background: "rgba(255,255,255,0.72)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderBottom: "1px solid rgba(180,160,140,0.15)",
-        boxShadow: "0 1px 24px rgba(160,130,100,0.07)",
+        background: "rgba(255,255,255,0.75)",
+        backdropFilter: "blur(10px)",
+        borderBottom: "1px solid rgba(0,0,0,0.06)",
         padding: "16px 24px",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "relative", zIndex: 10,
       }}>
         {/* Left: Authority button */}
         <div style={{ width: "96px", display: "flex", justifyContent: "flex-start" }}>
@@ -568,19 +462,17 @@ export default function InsuranceApp() {
             onClick={() => setUseAuthority((v) => !v)}
             title={useAuthority ? "切換回自訂說明" : "載入權威重點整理"}
             style={{
-              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: "6px", padding: "8px 13px", borderRadius: "20px",
-              border: useAuthority ? "1.5px solid #3a5634" : "1.5px solid #b0a090",
-              background: useAuthority ? "#4a6844" : "rgba(255,255,255,0.85)",
-              color: useAuthority ? "white" : "#5a4a3a",
-              cursor: "pointer", transition: "all 0.22s",
-              fontSize: "17px", lineHeight: 1,
-              boxShadow: useAuthority ? "0 2px 10px rgba(74,104,68,0.25)" : "0 1px 4px rgba(0,0,0,0.08)",
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: "2px", padding: "6px 10px", borderRadius: "10px", border: "none",
+              background: useAuthority ? "#4a6844" : "#ede8e2",
+              color: useAuthority ? "white" : "#7a6a60",
+              cursor: "pointer", transition: "all 0.2s",
+              fontSize: "20px", lineHeight: 1,
             }}
           >
-            <span style={{ fontSize: "17px" }}>💪</span>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
-              {useAuthority ? "權威 ON" : "權威說明"}
+            <span>💪</span>
+            <span style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", marginTop: "1px" }}>
+              {useAuthority ? "權威ON" : "權威說明"}
             </span>
           </button>
         </div>
