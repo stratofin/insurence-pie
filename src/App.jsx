@@ -18,7 +18,7 @@ const insuranceData = [
   { id: 4, name: "住院實支實付", color: "#A4C9B9", icon: "💊", subtitle: "多花多賠・限額內實報實銷",        description: "花多少賠多少（限額內給付收據）。\n重要性：二代健保自費項目增加、民眾荷包失血、只要額度夠醫生放心治療。" },
   { id: 5, name: "住院日額",     color: "#C4C0A0", icon: "📋", subtitle: "多花多賠・病房手術療養",          description: "定額給付住院天數（診斷證明書）。\n重要性：病房費、薪資損失、看護費、交通費營養品、減少家人負擔。" },
   { id: 6, name: "癌症",         color: "#B4A4C9", icon: "🎗", subtitle: "可選日額型・彈性給付",            description: "惡性腫瘤。\n重要性：昂貴標靶藥物費、治療過程長、影響工作收入、家人心情與經濟壓力大。" },
-  { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "少額・保額×住院日數",             description: "七項重大疾病（病很重、花很多、拖很久、死不了）。\n重要性：復健安養治療時間長、收入中斷、生活費看護費龐大。" },
+  { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "經確診後一筆給付",               description: "七項重大疾病（病很重、花很多、拖很久、死不了）。\n重要性：復健安養治療時間長、收入中斷、生活費看護費龐大。" },
   { id: 8, name: "長照",         color: "#C4A8B4", icon: "🌿", subtitle: "持續給付・長期條件每年／每月",    description: "長期失能無法自理（吃飯、如廁、移位等六項失能）。\n重要性：長期看護費昂貴、家人照護壓力龐大、生活品質嚴重受影響。" },
 ];
 
@@ -502,18 +502,65 @@ export default function InsuranceApp() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #f8f5f0 0%, #f0ede8 100%)",
+      background: "linear-gradient(160deg, #faf7f3 0%, #f4ede4 50%, #ede6dd 100%)",
       fontFamily: "'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif",
       display: "flex", flexDirection: "column", alignItems: "center",
+      position: "relative", overflow: "hidden",
     }}>
+
+      {/* ── 背景裝飾層 ── */}
+      {/* 光暈球：右上角玫瑰色 */}
+      <div style={{ position:"fixed", top:"-180px", right:"-180px", width:"520px", height:"520px",
+        borderRadius:"50%", background:"radial-gradient(circle, rgba(201,169,164,0.18) 0%, transparent 70%)",
+        pointerEvents:"none", zIndex:0 }} />
+      {/* 光暈球：左下角鼠尾草綠 */}
+      <div style={{ position:"fixed", bottom:"-200px", left:"-160px", width:"560px", height:"560px",
+        borderRadius:"50%", background:"radial-gradient(circle, rgba(164,196,168,0.16) 0%, transparent 70%)",
+        pointerEvents:"none", zIndex:0 }} />
+      {/* 光暈球：左上角淡藍 */}
+      <div style={{ position:"fixed", top:"40%", left:"-220px", width:"440px", height:"440px",
+        borderRadius:"50%", background:"radial-gradient(circle, rgba(164,181,201,0.12) 0%, transparent 70%)",
+        pointerEvents:"none", zIndex:0 }} />
+      {/* 光暈球：右下角薰衣草 */}
+      <div style={{ position:"fixed", bottom:"5%", right:"-180px", width:"420px", height:"420px",
+        borderRadius:"50%", background:"radial-gradient(circle, rgba(180,164,201,0.11) 0%, transparent 70%)",
+        pointerEvents:"none", zIndex:0 }} />
+      {/* 點陣圖案 SVG */}
+      <svg style={{ position:"fixed", inset:0, width:"100%", height:"100%", pointerEvents:"none", zIndex:0, opacity:0.35 }}
+        xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="dots" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+            <circle cx="1.5" cy="1.5" r="1.2" fill="#c8b8a8" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dots)" />
+      </svg>
+      {/* 右側細線裝飾弧 */}
+      <svg style={{ position:"fixed", top:"10%", right:0, width:"180px", height:"420px", pointerEvents:"none", zIndex:0, opacity:0.18 }}
+        viewBox="0 0 180 420" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 180 0 Q 20 210 180 420" fill="none" stroke="#a09080" strokeWidth="1"/>
+        <path d="M 180 40 Q 50 210 180 380" fill="none" stroke="#a09080" strokeWidth="0.6"/>
+        <path d="M 180 80 Q 80 210 180 340" fill="none" stroke="#a09080" strokeWidth="0.4"/>
+      </svg>
+      {/* 左側細線裝飾弧 */}
+      <svg style={{ position:"fixed", top:"10%", left:0, width:"180px", height:"420px", pointerEvents:"none", zIndex:0, opacity:0.18 }}
+        viewBox="0 0 180 420" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 0 0 Q 160 210 0 420" fill="none" stroke="#a09080" strokeWidth="1"/>
+        <path d="M 0 40 Q 130 210 0 380" fill="none" stroke="#a09080" strokeWidth="0.6"/>
+        <path d="M 0 80 Q 100 210 0 340" fill="none" stroke="#a09080" strokeWidth="0.4"/>
+      </svg>
+
       {/* Header */}
       <div style={{
         width: "100%", boxSizing: "border-box",
-        background: "rgba(255,255,255,0.75)",
-        backdropFilter: "blur(10px)",
-        borderBottom: "1px solid rgba(0,0,0,0.06)",
+        background: "rgba(255,255,255,0.72)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        borderBottom: "1px solid rgba(180,160,140,0.15)",
+        boxShadow: "0 1px 24px rgba(160,130,100,0.07)",
         padding: "16px 24px",
         display: "flex", alignItems: "center", justifyContent: "space-between",
+        position: "relative", zIndex: 10,
       }}>
         {/* Left: Authority button */}
         <div style={{ width: "96px", display: "flex", justifyContent: "flex-start" }}>
@@ -521,17 +568,19 @@ export default function InsuranceApp() {
             onClick={() => setUseAuthority((v) => !v)}
             title={useAuthority ? "切換回自訂說明" : "載入權威重點整理"}
             style={{
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: "2px", padding: "6px 10px", borderRadius: "10px", border: "none",
-              background: useAuthority ? "#4a6844" : "#ede8e2",
-              color: useAuthority ? "white" : "#7a6a60",
-              cursor: "pointer", transition: "all 0.2s",
-              fontSize: "20px", lineHeight: 1,
+              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: "6px", padding: "8px 13px", borderRadius: "20px",
+              border: useAuthority ? "1.5px solid #3a5634" : "1.5px solid #b0a090",
+              background: useAuthority ? "#4a6844" : "rgba(255,255,255,0.85)",
+              color: useAuthority ? "white" : "#5a4a3a",
+              cursor: "pointer", transition: "all 0.22s",
+              fontSize: "17px", lineHeight: 1,
+              boxShadow: useAuthority ? "0 2px 10px rgba(74,104,68,0.25)" : "0 1px 4px rgba(0,0,0,0.08)",
             }}
           >
-            <span>💪</span>
-            <span style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", marginTop: "1px" }}>
-              {useAuthority ? "權威ON" : "權威說明"}
+            <span style={{ fontSize: "17px" }}>💪</span>
+            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+              {useAuthority ? "權威 ON" : "權威說明"}
             </span>
           </button>
         </div>
