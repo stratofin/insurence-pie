@@ -17,8 +17,8 @@ const insuranceData = [
   { id: 9, name: "意外實支",     color: "#D4B89A", icon: "🧾", subtitle: "意外花費實報實銷・限額內給付",    description: "花多少賠多少（限額內給付收據）。\n重要性：請假扣薪、醫藥費損失、驚魂未定。" },
   { id: 4, name: "住院實支實付", color: "#A4C9B9", icon: "💊", subtitle: "多花多賠・限額內實報實銷",        description: "花多少賠多少（限額內給付收據）。\n重要性：二代健保自費項目增加、民眾荷包失血、只要額度夠醫生放心治療。" },
   { id: 5, name: "住院日額",     color: "#C4C0A0", icon: "📋", subtitle: "多花多賠・病房手術療養",          description: "定額給付住院天數（診斷證明書）。\n重要性：病房費、薪資損失、看護費、交通費營養品、減少家人負擔。" },
-  { id: 6, name: "癌症",         color: "#B4A4C9", icon: "🎗", subtitle: "可選日額型・彈性給付",            description: "惡性腫瘤。\n重要性：昂貴標靶藥物費、治療過程長、影響工作收入、家人心情與經濟壓力大。" },
-  { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "經確診後一筆給付",               description: "七項重大疾病（病很重、花很多、拖很久、死不了）。\n重要性：復健安養治療時間長、收入中斷、生活費看護費龐大。" },
+  { id: 6, name: "癌症",         color: "#B4A4C9", icon: "🎗", subtitle: "可選日額型・彈性給付",            description: "惡性腫瘤。\n重要性：昂貴標靶藥物費、治療過程長、影響工作收入、家人心情與經濟壓力大。",            pdfFile: "/癌症統計表.pdf" },
+  { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "經確診後一筆給付",               description: "七項重大疾病（病很重、花很多、拖很久、死不了）。\n重要性：復健安養治療時間長、收入中斷、生活費看護費龐大。", pdfFile: "/重大傷病統計表.pdf" },
   { id: 8, name: "長照",         color: "#C4A8B4", icon: "🌿", subtitle: "持續給付・長期條件每年／每月",    description: "長期失能無法自理（吃飯、如廁、移位等六項失能）。\n重要性：長期看護費昂貴、家人照護壓力龐大、生活品質嚴重受影響。" },
 ];
 
@@ -150,8 +150,6 @@ export default function InsuranceApp() {
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
   const [subEditing, setSubEditing] = useState(false);
   const [subEditText, setSubEditText] = useState("");
-  const openStatsTable = () => window.open("/重大傷病統計表.pdf", "_blank");
-
   // Active descriptions: authority mode or user-edited descriptions
   const activeDescriptions = useAuthority ? authorityDescriptions : descriptions;
 
@@ -330,10 +328,10 @@ export default function InsuranceApp() {
                 <p style={{ margin: 0, fontSize: "0.78rem", color: "#9a8a80" }}>{selected.subtitle}</p>
               </div>
             </div>
-            {selected.id === 7 && (
+            {selected.pdfFile && (
               <button
-                onClick={openStatsTable}
-                title="查看健保重大傷病統計表（原始PDF）"
+                onClick={() => window.open(selected.pdfFile, "_blank")}
+                title="查看統計表（原始PDF）"
                 style={{
                   width: "36px", height: "36px", borderRadius: "9px", flexShrink: 0,
                   background: selected.color, border: "none", cursor: "pointer",
