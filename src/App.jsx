@@ -145,6 +145,9 @@ export default function InsuranceApp() {
   const [hoveredId, setHoveredId] = useState(null);
   const [centerHovered, setCenterHovered] = useState(false);
   const [viewMode, setViewMode] = useState("desktop"); // "desktop" | "mobile"
+  const [chartScale, setChartScale] = useState(1.0);
+  const scaleUp   = () => setChartScale(s => Math.min(1.5, +(s + 0.1).toFixed(1)));
+  const scaleDown = () => setChartScale(s => Math.max(0.7, +(s - 0.1).toFixed(1)));
   const [useAuthority, setUseAuthority] = useState(false);
   const [selectedSubType, setSelectedSubType] = useState(null); // 目前選中的子分類 id
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
@@ -183,7 +186,7 @@ export default function InsuranceApp() {
     <svg
       viewBox="0 0 400 400"
       style={{
-        width: isMobile ? "min(92vw, 380px)" : "min(52vw, 520px)",
+        width: isMobile ? "min(92vw, 380px)" : `min(52vw, ${Math.round(520 * chartScale)}px)`,
         height: "auto",
         flexShrink: 0,
         display: "block",
@@ -305,7 +308,7 @@ export default function InsuranceApp() {
 
   // ---------- Detail Panel ----------
   const detailPanel = (
-    <div style={{ flex: 1, minWidth: isMobile ? "0" : "260px", maxWidth: isMobile ? "100%" : "400px", width: isMobile ? "100%" : undefined }}>
+    <div style={{ flex: 1, minWidth: isMobile ? "0" : `${Math.round(260 * chartScale)}px`, maxWidth: isMobile ? "100%" : `${Math.round(400 * chartScale)}px`, width: isMobile ? "100%" : undefined }}>
       {selected ? (
         <div style={{
           background: "white",
@@ -593,6 +596,54 @@ export default function InsuranceApp() {
 
         {/* View mode toggle buttons */}
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+
+          {/* Size control — desktop only */}
+          {!isMobile && (
+            <div style={{
+              width: "44px", height: "44px", borderRadius: "10px",
+              background: "#ede8e2", overflow: "hidden",
+              display: "flex", flexDirection: "column", flexShrink: 0,
+            }}>
+              <button
+                onClick={scaleUp}
+                title="放大"
+                disabled={chartScale >= 1.5}
+                style={{
+                  flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "transparent", border: "none",
+                  borderBottom: "1px solid rgba(0,0,0,0.09)",
+                  cursor: chartScale < 1.5 ? "pointer" : "not-allowed",
+                  color: chartScale < 1.5 ? "#4a3f38" : "#c0b0a0",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => { if (chartScale < 1.5) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+              </button>
+              <button
+                onClick={scaleDown}
+                title="縮小"
+                disabled={chartScale <= 0.7}
+                style={{
+                  flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "transparent", border: "none",
+                  cursor: chartScale > 0.7 ? "pointer" : "not-allowed",
+                  color: chartScale > 0.7 ? "#4a3f38" : "#c0b0a0",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => { if (chartScale > 0.7) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <button
             onClick={() => setViewMode("desktop")}
             title="電腦版"
