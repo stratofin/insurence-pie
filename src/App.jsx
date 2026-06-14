@@ -688,7 +688,7 @@ export default function InsuranceApp() {
         // ── Desktop: side by side ──
         <div style={{
           display: "flex", flexDirection: "row",
-          alignItems: "flex-start", justifyContent: "center",
+          alignItems: "center", justifyContent: "center",
           gap: `${Math.round(36 * chartScale)}px`, padding: "36px 32px",
           width: "100%", maxWidth: `${Math.round(1100 * chartScale)}px`, boxSizing: "border-box",
           flexWrap: "nowrap",
