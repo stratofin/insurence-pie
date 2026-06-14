@@ -689,9 +689,9 @@ export default function InsuranceApp() {
         <div style={{
           display: "flex", flexDirection: "row",
           alignItems: "flex-start", justifyContent: "center",
-          gap: "36px", padding: "36px 32px",
-          width: "100%", maxWidth: "1100px", boxSizing: "border-box",
-          flexWrap: "wrap",
+          gap: `${Math.round(36 * chartScale)}px`, padding: "36px 32px",
+          width: "100%", maxWidth: `${Math.round(1100 * chartScale)}px`, boxSizing: "border-box",
+          flexWrap: "nowrap",
         }}>
           {chart}
           {detailPanel}
