@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+const COVERAGE_STORAGE_KEY = "insuranceCoverageValues";
 
 const centerItem = {
   id: "center",
@@ -153,6 +155,98 @@ export default function InsuranceApp() {
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
   const [subEditing, setSubEditing] = useState(false);
   const [subEditText, setSubEditText] = useState("");
+
+  // ---------- 保障數值（每個類型可有多列，最少 1 列）----------
+  const [coverageValues, setCoverageValues] = useState({}); // { [id]: string[] } — 只存已完成、非空的資料
+  const [showCoverageModal, setShowCoverageModal] = useState(false);
+  const [coverageDraft, setCoverageDraft] = useState({}); // { [id]: string[] } — 編輯中的草稿，允許空字串
+  const [collapsedItems, setCollapsedItems] = useState({}); // { [id]: boolean } — 各項目展開/收合狀態
+  const [coverageFlash, setCoverageFlash] = useState(null); // "saved" | "loaded" | null
+
+  // 相容舊資料（字串或陣列皆可讀），只保留非空值
+  const normalizeCoverageValues = (data) => {
+    const out = {};
+    insuranceData.forEach((item) => {
+      const v = data?.[item.id];
+      let arr = [];
+      if (Array.isArray(v)) arr = v.map((x) => String(x).trim()).filter((x) => x !== "");
+      else if (typeof v === "string" && v.trim() !== "") arr = [v.trim()];
+      if (arr.length > 0) out[item.id] = arr;
+    });
+    return out;
+  };
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COVERAGE_STORAGE_KEY);
+      if (saved) setCoverageValues(normalizeCoverageValues(JSON.parse(saved)));
+    } catch (e) { /* ignore */ }
+  }, []);
+
+  const hasCoverageData = Object.keys(coverageValues).length > 0;
+
+  const openCoverageModal = () => {
+    const draft = {};
+    insuranceData.forEach((item) => {
+      const existing = coverageValues[item.id];
+      draft[item.id] = existing && existing.length ? [...existing] : [""];
+    });
+    setCoverageDraft(draft);
+    setCollapsedItems({});
+    setShowCoverageModal(true);
+  };
+  const closeCoverageModal = () => setShowCoverageModal(false);
+
+  const updateCoverageRow = (id, idx, value) => {
+    setCoverageDraft((prev) => {
+      const arr = [...(prev[id] || [""])];
+      arr[idx] = value;
+      return { ...prev, [id]: arr };
+    });
+  };
+  const addCoverageRow = (id) => {
+    setCoverageDraft((prev) => ({ ...prev, [id]: [...(prev[id] || [""]), ""] }));
+    setCollapsedItems((prev) => ({ ...prev, [id]: false }));
+  };
+  const removeCoverageRow = (id, idx) => {
+    setCoverageDraft((prev) => {
+      const arr = [...(prev[id] || [""])];
+      if (arr.length <= 1) return prev; // 最少保留 1 列
+      arr.splice(idx, 1);
+      return { ...prev, [id]: arr };
+    });
+  };
+  const toggleCollapse = (id) => setCollapsedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const handleCoverageDone = () => {
+    const cleaned = {};
+    Object.keys(coverageDraft).forEach((id) => {
+      const arr = (coverageDraft[id] || []).map((v) => v.trim()).filter((v) => v !== "");
+      if (arr.length > 0) cleaned[id] = arr;
+    });
+    setCoverageValues(cleaned);
+    setShowCoverageModal(false);
+  };
+  const handleCoverageClear = () => {
+    const draft = {};
+    insuranceData.forEach((item) => { draft[item.id] = [""]; });
+    setCoverageDraft(draft);
+    setCoverageValues({});
+    setCollapsedItems({});
+  };
+  const flashMsg = (msg) => { setCoverageFlash(msg); setTimeout(() => setCoverageFlash(null), 1200); };
+  const handleCoverageSave = () => {
+    try { localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(coverageValues)); flashMsg("saved"); }
+    catch (e) { /* ignore */ }
+  };
+  const handleCoverageLoad = () => {
+    try {
+      const saved = localStorage.getItem(COVERAGE_STORAGE_KEY);
+      setCoverageValues(saved ? normalizeCoverageValues(JSON.parse(saved)) : {});
+      flashMsg("loaded");
+    } catch (e) { /* ignore */ }
+  };
+
   // Active descriptions: authority mode or user-edited descriptions
   const activeDescriptions = useAuthority ? authorityDescriptions : descriptions;
 
@@ -253,6 +347,31 @@ export default function InsuranceApp() {
                 item.name
               )}
             </text>
+
+            {/* 保障數值標籤 */}
+            {coverageValues[item.id] && coverageValues[item.id].length > 0 && (() => {
+              const valPos = getLabelPos(cx, cy, outerR - 20, startAngle, endAngle);
+              const values = coverageValues[item.id];
+              const extra = values.length - 1;
+              const txt = extra > 0 ? `${values[0]} +${extra}` : values[0];
+              const boxW = Math.max(38, txt.length * 8.5 + 14);
+              return (
+                <g style={{ pointerEvents: "none" }}>
+                  <rect
+                    x={valPos.x - boxW / 2} y={valPos.y - 11}
+                    width={boxW} height={20} rx="10"
+                    fill="rgba(255,255,255,0.92)" stroke={item.color} strokeWidth="1.2"
+                  />
+                  <text
+                    x={valPos.x} y={valPos.y + 1}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize="11.5" fontWeight="700" fill="#4a3020"
+                  >
+                    {txt}
+                  </text>
+                </g>
+              );
+            })()}
           </g>
         );
       })}
@@ -467,6 +586,22 @@ export default function InsuranceApp() {
               )}
             </div>
           ))}
+
+          {/* 保障數值列表 */}
+          {coverageValues[selected.id] && coverageValues[selected.id].length > 0 && (
+            <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px dashed #e5ddd4" }}>
+              <p style={{ margin: "0 0 8px", fontSize: "0.72rem", color: "#9a8a80", fontWeight: 600, letterSpacing: "0.05em" }}>保障數值</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {coverageValues[selected.id].map((v, idx) => (
+                  <span key={idx} style={{
+                    padding: "4px 10px", borderRadius: "20px",
+                    background: `${selected.color}33`, border: `1.5px solid ${selected.color}`,
+                    fontSize: "0.78rem", color: "#4a3020", fontWeight: 600,
+                  }}>{v}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: "16px", padding: isMobile ? "28px 20px" : "40px 28px", textAlign: "center", border: "2px dashed #d8cfc8" }}>
@@ -560,11 +695,11 @@ export default function InsuranceApp() {
         borderBottom: "1px solid rgba(180,160,140,0.15)",
         boxShadow: "0 1px 24px rgba(160,130,100,0.07)",
         padding: "16px 24px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
+        display: "grid", gridTemplateColumns: "auto 1fr auto", columnGap: "12px", alignItems: "center",
         position: "relative", zIndex: 10,
       }}>
-        {/* Left: Authority button */}
-        <div style={{ width: "96px", display: "flex", justifyContent: "flex-start" }}>
+        {/* Left: Authority + Coverage buttons */}
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", justifySelf: "start" }}>
           <button
             onClick={() => setUseAuthority((v) => !v)}
             title={useAuthority ? "切換回自訂說明" : "載入權威重點整理"}
@@ -584,18 +719,83 @@ export default function InsuranceApp() {
               {useAuthority ? "權威 ON" : "權威說明"}
             </span>
           </button>
+
+          <button
+            onClick={openCoverageModal}
+            title="輸入各類型保障數值"
+            style={{
+              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: "6px", padding: "8px 13px", borderRadius: "20px",
+              border: hasCoverageData ? "1.5px solid #8a6a2a" : "1.5px solid #b0a090",
+              background: hasCoverageData ? "#c99a3a" : "rgba(255,255,255,0.85)",
+              color: hasCoverageData ? "white" : "#5a4a3a",
+              cursor: "pointer", transition: "all 0.22s",
+              fontSize: "17px", lineHeight: 1,
+              boxShadow: hasCoverageData ? "0 2px 10px rgba(201,154,58,0.28)" : "0 1px 4px rgba(0,0,0,0.08)",
+            }}
+          >
+            <span style={{ fontSize: "17px" }}>💰</span>
+            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+              保障數值
+            </span>
+          </button>
         </div>
 
         {/* Title center */}
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", justifySelf: "center" }}>
           <h1 style={{ margin: 0, fontSize: "1.45rem", fontWeight: 700, color: "#4a3f38", letterSpacing: "0.05em" }}>
             保險類型總覽
           </h1>
           <p style={{ margin: "3px 0 0", fontSize: "0.82rem", color: "#8a7a72" }}>點擊各區塊查看說明</p>
         </div>
 
-        {/* View mode toggle buttons */}
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        {/* Right: save/load + size control + view mode toggle */}
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", justifySelf: "end" }}>
+
+          {/* 保障數值 本機存檔／讀取 */}
+          <div style={{
+            width: "44px", height: "44px", borderRadius: "10px",
+            background: "#ede8e2", overflow: "hidden",
+            display: "flex", flexDirection: "column", flexShrink: 0,
+          }}>
+            <button
+              onClick={handleCoverageSave}
+              title="本機存檔"
+              style={{
+                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                background: coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent",
+                border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
+                cursor: "pointer", color: coverageFlash === "saved" ? "#3a5634" : "#4a3f38",
+                transition: "background 0.15s, color 0.15s",
+              }}
+              onMouseEnter={e => { if (!coverageFlash) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+            </button>
+            <button
+              onClick={handleCoverageLoad}
+              title="讀取本機存檔"
+              style={{
+                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                background: coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent",
+                border: "none",
+                cursor: "pointer", color: coverageFlash === "loaded" ? "#3a5634" : "#4a3f38",
+                transition: "background 0.15s, color 0.15s",
+              }}
+              onMouseEnter={e => { if (!coverageFlash) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <polyline points="21 3 21 9 15 9" />
+              </svg>
+            </button>
+          </div>
 
           {/* Size control — desktop only */}
           {!isMobile && (
@@ -695,6 +895,170 @@ export default function InsuranceApp() {
         }}>
           {chart}
           {detailPanel}
+        </div>
+      )}
+
+      {/* ── 保障數值設定 Modal ── */}
+      {showCoverageModal && (
+        <div
+          onClick={closeCoverageModal}
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(40,32,26,0.55)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "24px", boxSizing: "border-box",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white", borderRadius: "18px",
+              width: "100%", maxWidth: "460px", maxHeight: "82vh",
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              padding: "18px 22px", borderBottom: "1px solid #ece4dc",
+              display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "19px" }}>💰</span>
+                <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700, color: "#3a2f28" }}>保障數值設定</h3>
+              </div>
+              <button
+                onClick={closeCoverageModal}
+                title="關閉"
+                style={{
+                  width: "30px", height: "30px", borderRadius: "8px", border: "none",
+                  background: "#f0ede8", color: "#8a7a72", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal body — scrollable list */}
+            <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
+              <p style={{ margin: "0 0 14px", fontSize: "0.78rem", color: "#9a8a80" }}>
+                每個類型可新增多列數值（最少 1 列），例如「300萬」或「日額2,000」。輸入完可收合，方便繼續填寫其他類型。
+              </p>
+              {insuranceData.map((item) => {
+                const rows = coverageDraft[item.id] || [""];
+                const filledCount = rows.filter((v) => v.trim() !== "").length;
+                const isCollapsed = !!collapsedItems[item.id];
+                return (
+                  <div key={item.id} style={{ marginBottom: "12px", border: "1px solid #ece4dc", borderRadius: "12px", overflow: "hidden" }}>
+                    {/* Item header — click to expand/collapse */}
+                    <div
+                      onClick={() => toggleCollapse(item.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px",
+                        cursor: "pointer", background: "#faf8f5", userSelect: "none",
+                      }}
+                    >
+                      <div style={{
+                        width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0,
+                        background: item.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px",
+                      }}>{item.icon}</div>
+                      <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
+                      <span style={{ fontSize: "0.7rem", color: "#9a8a80", flexShrink: 0 }}>
+                        {filledCount > 0 ? `已輸入 ${filledCount} 筆` : "尚未輸入"}
+                      </span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a7a72" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.18s", flexShrink: 0 }}>
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </div>
+
+                    {/* Rows — hidden when collapsed */}
+                    {!isCollapsed && (
+                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {rows.map((val, idx) => (
+                          <div key={idx} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                            <input
+                              type="text"
+                              value={val}
+                              onChange={(e) => updateCoverageRow(item.id, idx, e.target.value)}
+                              placeholder={`保障數值 ${idx + 1}`}
+                              style={{
+                                flex: 1, minWidth: 0, padding: "8px 12px", borderRadius: "8px",
+                                border: `1.5px solid ${item.color}`, outline: "none",
+                                fontSize: "0.85rem", color: "#3a2f28", fontFamily: "inherit",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                            <button
+                              onClick={() => removeCoverageRow(item.id, idx)}
+                              disabled={rows.length <= 1}
+                              title="移除這一列"
+                              style={{
+                                width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0, border: "none",
+                                background: rows.length <= 1 ? "#f0ede8" : "#f5e2de",
+                                color: rows.length <= 1 ? "#c0b8b0" : "#a04030",
+                                cursor: rows.length <= 1 ? "not-allowed" : "pointer",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                              }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => addCoverageRow(item.id)}
+                          style={{
+                            alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "5px",
+                            padding: "6px 12px", borderRadius: "20px", border: `1.5px dashed ${item.color}`,
+                            background: "transparent", color: "#5a4a3a", fontSize: "0.76rem", fontWeight: 600,
+                            cursor: "pointer", fontFamily: "inherit",
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                          </svg>
+                          新增一列
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{
+              padding: "14px 22px", borderTop: "1px solid #ece4dc",
+              display: "flex", gap: "10px", flexShrink: 0,
+            }}>
+              <button
+                onClick={handleCoverageClear}
+                style={{
+                  padding: "10px 18px", borderRadius: "10px", border: "1.5px solid #d0c0b0",
+                  background: "transparent", color: "#8a6a50", fontSize: "0.9rem", fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                清除
+              </button>
+              <button
+                onClick={handleCoverageDone}
+                style={{
+                  flex: 1, padding: "10px 18px", borderRadius: "10px", border: "none",
+                  background: "#4a3f38", color: "white", fontSize: "0.9rem", fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                完成
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
