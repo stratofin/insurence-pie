@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 
 const COVERAGE_STORAGE_KEY = "insuranceCoverageValues";
 
@@ -150,6 +150,19 @@ export default function InsuranceApp() {
   const [chartScale, setChartScale] = useState(1.0);
   const scaleUp   = () => setChartScale(s => Math.min(1.5, +(s + 0.1).toFixed(1)));
   const scaleDown = () => setChartScale(s => Math.max(0.7, +(s - 0.1).toFixed(1)));
+
+  // 說明區塊的「原始未縮放高度」量測 — 讓外層容器保留正確版面空間
+  const detailContentRef = useRef(null);
+  const [detailNaturalHeight, setDetailNaturalHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = detailContentRef.current;
+    if (!el) return;
+    const update = () => setDetailNaturalHeight(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [useAuthority, setUseAuthority] = useState(false);
   const [selectedSubType, setSelectedSubType] = useState(null); // 目前選中的子分類 id
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
@@ -280,7 +293,7 @@ export default function InsuranceApp() {
     <svg
       viewBox="0 0 400 400"
       style={{
-        width: isMobile ? "min(92vw, 380px)" : `min(52vw, ${Math.round(520 * chartScale)}px)`,
+        width: isMobile ? "min(92vw, 380px)" : `${Math.round(520 * chartScale)}px`,
         height: "auto",
         flexShrink: 0,
         display: "block",
@@ -427,7 +440,19 @@ export default function InsuranceApp() {
 
   // ---------- Detail Panel ----------
   const detailPanel = (
-    <div style={{ flex: 1, minWidth: isMobile ? "0" : `${Math.round(260 * chartScale)}px`, maxWidth: isMobile ? "100%" : `${Math.round(400 * chartScale)}px`, width: isMobile ? "100%" : undefined }}>
+    <div style={{
+      width: isMobile ? "100%" : `${Math.round(400 * chartScale)}px`,
+      height: isMobile ? "auto" : (detailNaturalHeight ? `${Math.round(detailNaturalHeight * chartScale)}px` : "auto"),
+      flexShrink: 0,
+    }}>
+    <div
+      ref={detailContentRef}
+      style={{
+        width: isMobile ? "100%" : "400px",
+        transform: isMobile ? "none" : `scale(${chartScale})`,
+        transformOrigin: "top left",
+      }}
+    >
       {selected ? (
         <div style={{
           background: "white",
@@ -631,6 +656,7 @@ export default function InsuranceApp() {
           ))}
         </div>
       </div>
+    </div>
     </div>
   );
 
@@ -887,14 +913,19 @@ export default function InsuranceApp() {
       ) : (
         // ── Desktop: side by side ──
         <div style={{
-          display: "flex", flexDirection: "row",
-          alignItems: "center", justifyContent: "center",
-          gap: `${Math.round(36 * chartScale)}px`, padding: "36px 32px",
-          width: "100%", maxWidth: `${Math.round(1100 * chartScale)}px`, boxSizing: "border-box",
-          flexWrap: "nowrap",
+          width: "100%", maxWidth: `${Math.round(1100 * chartScale)}px`,
+          boxSizing: "border-box", overflowX: "auto",
         }}>
-          {chart}
-          {detailPanel}
+          <div style={{
+            display: "flex", flexDirection: "row",
+            alignItems: "center", justifyContent: "center",
+            gap: `${Math.round(36 * chartScale)}px`, padding: "36px 32px",
+            width: "fit-content", minWidth: "100%", boxSizing: "border-box",
+            flexWrap: "nowrap", margin: "0 auto",
+          }}>
+            {chart}
+            {detailPanel}
+          </div>
         </div>
       )}
 
