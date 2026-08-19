@@ -151,7 +151,20 @@ export default function InsuranceApp() {
   const scaleUp   = () => setChartScale(s => Math.min(1.5, +(s + 0.1).toFixed(1)));
   const scaleDown = () => setChartScale(s => Math.max(0.7, +(s - 0.1).toFixed(1)));
 
-  // 說明區塊的「原始未縮放高度」量測 — 讓外層容器保留正確版面空間
+  // 說明區塊：量測外層（彈性欄寬）實際可用寬度，讓文字內容真正吃到多出來的空間
+  const detailOuterRef = useRef(null);
+  const [detailOuterWidth, setDetailOuterWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = detailOuterRef.current;
+    if (!el) return;
+    const update = () => setDetailOuterWidth(el.offsetWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 量測說明區塊「原始未縮放高度」— 讓外層容器保留正確版面空間
   const detailContentRef = useRef(null);
   const [detailNaturalHeight, setDetailNaturalHeight] = useState(0);
   useLayoutEffect(() => {
@@ -260,6 +273,9 @@ export default function InsuranceApp() {
     } catch (e) { /* ignore */ }
   };
 
+  // 輸出 PDF — 使用瀏覽器列印（另存為 PDF），確保中文字體正常顯示
+  const handleExportPDF = () => window.print();
+
   // Active descriptions: authority mode or user-edited descriptions
   const activeDescriptions = useAuthority ? authorityDescriptions : descriptions;
 
@@ -291,9 +307,9 @@ export default function InsuranceApp() {
   // ---------- SVG Chart ----------
   const chart = (
     <svg
-      viewBox="0 0 400 400"
+      viewBox="-50 -50 500 500"
       style={{
-        width: isMobile ? "min(92vw, 380px)" : `${Math.round(520 * chartScale)}px`,
+        width: isMobile ? "min(92vw, 475px)" : `${Math.round(650 * chartScale)}px`,
         height: "auto",
         flexShrink: 0,
         display: "block",
@@ -324,6 +340,8 @@ export default function InsuranceApp() {
         const ty = isSelected ? Math.sin(midRad) * 7 : 0;
         const labelPos = getLabelPos(cx, cy, (outerR + innerR) / 2 + 6, startAngle, endAngle);
         const longName = item.name.length > 3;
+        const isFourChar = item.name.length === 4;
+        const splitAt = isFourChar ? 2 : 3;
 
         return (
           <g
@@ -353,27 +371,30 @@ export default function InsuranceApp() {
             >
               {longName ? (
                 <>
-                  <tspan x={labelPos.x} dy="-10">{item.name.slice(0, 3)}</tspan>
-                  <tspan x={labelPos.x} dy="21">{item.name.slice(3)}</tspan>
+                  <tspan x={labelPos.x} dy="-10">{item.name.slice(0, splitAt)}</tspan>
+                  <tspan x={labelPos.x} dy="21">{item.name.slice(splitAt)}</tspan>
                 </>
               ) : (
                 item.name
               )}
             </text>
 
-            {/* 保障數值標籤 */}
+            {/* 保障數值標籤 — 放在圓餅圖外圍，不覆蓋圖形本身 */}
             {coverageValues[item.id] && coverageValues[item.id].length > 0 && (() => {
-              const valPos = getLabelPos(cx, cy, outerR - 20, startAngle, endAngle);
+              const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
+              const valPos  = getLabelPos(cx, cy, outerR + 27, startAngle, endAngle);
               const values = coverageValues[item.id];
               const extra = values.length - 1;
               const txt = extra > 0 ? `${values[0]} +${extra}` : values[0];
               const boxW = Math.max(38, txt.length * 8.5 + 14);
               return (
                 <g style={{ pointerEvents: "none" }}>
+                  <line x1={edgePos.x} y1={edgePos.y} x2={valPos.x} y2={valPos.y} stroke={item.color} strokeWidth="1.2" />
+                  <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={item.color} />
                   <rect
                     x={valPos.x - boxW / 2} y={valPos.y - 11}
                     width={boxW} height={20} rx="10"
-                    fill="rgba(255,255,255,0.92)" stroke={item.color} strokeWidth="1.2"
+                    fill="rgba(255,255,255,0.96)" stroke={item.color} strokeWidth="1.2"
                   />
                   <text
                     x={valPos.x} y={valPos.y + 1}
@@ -439,16 +460,23 @@ export default function InsuranceApp() {
   );
 
   // ---------- Detail Panel ----------
+  // 桌機版：說明區改為彈性欄，會吃滿圓餅圖移到左邊後多出來的空間；內容參考寬度＝實際可用寬度／縮放比例
+  const detailRefWidth = detailOuterWidth ? Math.round(detailOuterWidth / chartScale) : 400;
   const detailPanel = (
-    <div style={{
-      width: isMobile ? "100%" : `${Math.round(400 * chartScale)}px`,
-      height: isMobile ? "auto" : (detailNaturalHeight ? `${Math.round(detailNaturalHeight * chartScale)}px` : "auto"),
-      flexShrink: 0,
-    }}>
+    <div
+      ref={detailOuterRef}
+      style={{
+        width: isMobile ? "100%" : undefined,
+        flex: isMobile ? undefined : "1 1 0%",
+        minWidth: isMobile ? "0" : `${Math.round(320 * chartScale)}px`,
+        height: isMobile ? "auto" : (detailNaturalHeight ? `${Math.round(detailNaturalHeight * chartScale)}px` : "auto"),
+        flexShrink: isMobile ? 0 : undefined,
+      }}
+    >
     <div
       ref={detailContentRef}
       style={{
-        width: isMobile ? "100%" : "400px",
+        width: isMobile ? "100%" : `${detailRefWidth}px`,
         transform: isMobile ? "none" : `scale(${chartScale})`,
         transformOrigin: "top left",
       }}
@@ -775,8 +803,28 @@ export default function InsuranceApp() {
           <p style={{ margin: "3px 0 0", fontSize: "0.82rem", color: "#8a7a72" }}>點擊各區塊查看說明</p>
         </div>
 
-        {/* Right: save/load + size control + view mode toggle */}
+        {/* Right: export PDF + save/load + size control + view mode toggle */}
         <div style={{ display: "flex", gap: "8px", alignItems: "center", justifySelf: "end" }}>
+
+          {/* 輸出 PDF */}
+          <button
+            onClick={handleExportPDF}
+            title="輸出保障數值 PDF"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "44px", height: "44px", borderRadius: "10px", border: "none",
+              background: "#ede8e2", color: "#7a6a60",
+              cursor: "pointer", transition: "all 0.2s", flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#e2dbd2"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#ede8e2"; }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+          </button>
 
           {/* 保障數值 本機存檔／讀取 */}
           <div style={{
@@ -911,17 +959,19 @@ export default function InsuranceApp() {
           {detailPanel}
         </div>
       ) : (
-        // ── Desktop: side by side ──
+        // ── Desktop: side by side — 圓餅圖靠左，左右留白與圖表到說明區的間距一致，
+        // 說明區則彈性吃滿右側剩餘空間，方便補充更多文字 ──
         <div style={{
-          width: "100%", maxWidth: `${Math.round(1100 * chartScale)}px`,
-          boxSizing: "border-box", overflowX: "auto",
+          width: "100%", maxWidth: `${Math.round(1600 * chartScale)}px`,
+          boxSizing: "border-box", overflowX: "auto", margin: "0 auto",
         }}>
           <div style={{
             display: "flex", flexDirection: "row",
-            alignItems: "center", justifyContent: "center",
-            gap: `${Math.round(36 * chartScale)}px`, padding: "36px 32px",
-            width: "fit-content", minWidth: "100%", boxSizing: "border-box",
-            flexWrap: "nowrap", margin: "0 auto",
+            alignItems: "center", justifyContent: "flex-start",
+            gap: `${Math.round(40 * chartScale)}px`,
+            padding: `36px ${Math.round(40 * chartScale)}px`,
+            width: "100%", boxSizing: "border-box",
+            flexWrap: "nowrap",
           }}>
             {chart}
             {detailPanel}
@@ -1093,10 +1143,51 @@ export default function InsuranceApp() {
         </div>
       )}
 
+      {/* 輸出 PDF 用列印版面 — 畫面上隱藏，僅在「列印／另存為 PDF」時顯示 */}
+      <div className="print-summary">
+        <h1 style={{ fontSize: "20px", margin: "0 0 4px", color: "#2a2018", fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif" }}>
+          保險保障數值總覽
+        </h1>
+        <p style={{ fontSize: "12px", color: "#6a5a50", margin: "0 0 20px" }}>
+          製表日期：{new Date().toLocaleDateString("zh-TW")}
+        </p>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "8px 10px", borderBottom: "2px solid #4a3f38", width: "30%" }}>保險類型</th>
+              <th style={{ textAlign: "left", padding: "8px 10px", borderBottom: "2px solid #4a3f38" }}>保障數值</th>
+            </tr>
+          </thead>
+          <tbody>
+            {insuranceData.map((item) => {
+              const values = coverageValues[item.id];
+              return (
+                <tr key={item.id}>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #ddd3c8", fontWeight: 600 }}>{item.name}</td>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #ddd3c8" }}>
+                    {values && values.length > 0 ? values.join("、") : "-"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        .print-summary { display: none; }
+        @media print {
+          body * { visibility: hidden; }
+          .print-summary, .print-summary * { visibility: visible; }
+          .print-summary {
+            display: block !important;
+            position: absolute; top: 0; left: 0; width: 100%;
+            padding: 24px; box-sizing: border-box;
+          }
         }
       `}</style>
     </div>
