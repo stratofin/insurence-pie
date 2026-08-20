@@ -413,6 +413,9 @@ export default function InsuranceApp() {
         height: "auto",
         flexShrink: 0,
         display: "block",
+        overflow: "visible",
+        position: "relative",
+        zIndex: idSuffix === "" ? 50 : "auto",
       }}
     >
       <defs>
