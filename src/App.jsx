@@ -19,6 +19,7 @@ const insuranceData = [
   { id: 9, name: "意外實支",     color: "#D4B89A", icon: "🧾", subtitle: "意外花費實報實銷・限額內給付",    description: "花多少賠多少（限額內給付收據）。\n重要性：請假扣薪、醫藥費損失、驚魂未定。" },
   { id: 4, name: "住院實支實付", color: "#A4C9B9", icon: "💊", subtitle: "多花多賠・限額內實報實銷",        description: "花多少賠多少（限額內給付收據）。\n重要性：二代健保自費項目增加、民眾荷包失血、只要額度夠醫生放心治療。" },
   { id: 5, name: "住院日額",     color: "#C4C0A0", icon: "📋", subtitle: "多花多賠・病房手術療養",          description: "定額給付住院天數（診斷證明書）。\n重要性：病房費、薪資損失、看護費、交通費營養品、減少家人負擔。" },
+  { id: 10, name: "手術險",     label: "手術",     color: "#A8B4D4", icon: "🔪", subtitle: "依手術項目表・倍數給付",          description: "依「手術項目及費用表」按手術等級倍數給付。\n重要性：達文西機械手臂等自費手術差額、手術房材料費、恢復期照護與收入中斷。" },
   { id: 6, name: "癌症",         color: "#B4A4C9", icon: "🎗", subtitle: "可選日額型・彈性給付",            description: "惡性腫瘤。\n重要性：昂貴標靶藥物費、治療過程長、影響工作收入、家人心情與經濟壓力大。",            pdfFile: "/癌症統計表.pdf" },
   { id: 7, name: "重大傷病",     color: "#A4C4A8", icon: "❤️", subtitle: "經確診後一筆給付",               description: "七項重大疾病（病很重、花很多、拖很久、死不了）。\n重要性：復健安養治療時間長、收入中斷、生活費看護費龐大。", pdfFile: "/重大傷病統計表.pdf" },
   { id: 8, name: "長照",         color: "#C4A8B4", icon: "🌿", subtitle: "持續給付・長期條件每年／每月",    description: "長期失能無法自理（吃飯、如廁、移位等六項失能）。\n重要性：長期看護費昂貴、家人照護壓力龐大、生活品質嚴重受影響。" },
@@ -32,6 +33,7 @@ const authorityDescriptions = {
   3: "因意外傷害住院時，按「日額×住院天數」給付，與實際花費無關。骨折即使未住院也可按嚴重程度申請給付。同一次住院最高給付365天，保費便宜且無等待期。適合高風險工作族群及希望住院期間有穩定現金流的人，可用來補貼薪資損失或住院期間額外支出。",
   4: "以「實際醫療費用」為理賠基準，在保障範圍及限額內「花多少、賠多少」。理賠項目涵蓋病房費、手術費及醫療雜費，特別適用於自費醫材、靶向藥物等健保不給付項目。新制採正本理賠，額度需足夠。建議優先投保，是目前最能彌補健保缺口的核心醫療險種。",
   5: "定額住院給付，不論實際花費多少，住院即按「日額×天數」給付。例如日額2,000元，即使花費不足仍全額賠付，可用於補貼薪資損失、看護費用或家屬往返交通費。同一次住院最高給付365天，條件簡單、保費低，適合作為實支實付的補充搭配。",
+  10: "依保單所附「手術項目及費用表」，依手術等級（如1—10級）乘以基本保額倍數給付，部分保單另有實支實付型設計，可額外給付手術房、麻醉及特殊材料等自費差額。常見自費手術如達文西機械手臂、微創關節置換動輒十萬元以上，建議優先搭配實支實付型醫療險，確保高倍數手術也有對應保障。",
   6: "專門保障確診癌症後的醫療費用，分為初次罹癌一次給付型（確診即賠一筆，使用彈性最高）及療程給付型（按化療、放療、手術等分次理賠）。隨精準醫療普及，自費項目超過七成，標靶與免疫治療動輒50萬元以上，建議保額至少25萬元起，並優先選擇一次給付型保單。",
   7: "以健保重大傷病證明作為理賠依據，涵蓋22大類、逾300種疾病（含癌症、洗腎、器官移植等）。取得健保重大傷病卡後直接申請，無須提供醫療費用收據，一次給付、理賠簡便。理賠金可自由運用於醫療、康復或日常生活支出，是保障範圍最廣的重症保險之一。",
   8: "符合「長期照顧狀態」（六項日常生活自理能力中持續三項以上障礙，或認知功能障礙）時，給付一次金或每月扶助金。台灣65%失能者仰賴家人照顧，平均照護期8–10年，每月花費從2萬起、重度失能可達7萬以上。長照險保護家庭財務，避免照護費用拖垮整體收支。",
@@ -442,8 +444,9 @@ export default function InsuranceApp() {
         const tx = isSelected ? Math.cos(midRad) * 7 : 0;
         const ty = isSelected ? Math.sin(midRad) * 7 : 0;
         const labelPos = getLabelPos(cx, cy, (outerR + innerR) / 2 + 6, startAngle, endAngle);
-        const longName = item.name.length > 3;
-        const isFourChar = item.name.length === 4;
+        const displayLabel = item.label || item.name;
+        const longName = displayLabel.length > 3;
+        const isFourChar = displayLabel.length === 4;
         const splitAt = isFourChar ? 2 : 3;
 
         return (
@@ -474,11 +477,11 @@ export default function InsuranceApp() {
             >
               {longName ? (
                 <>
-                  <tspan x={labelPos.x} dy="-10">{item.name.slice(0, splitAt)}</tspan>
-                  <tspan x={labelPos.x} dy="21">{item.name.slice(splitAt)}</tspan>
+                  <tspan x={labelPos.x} dy="-10">{displayLabel.slice(0, splitAt)}</tspan>
+                  <tspan x={labelPos.x} dy="21">{displayLabel.slice(splitAt)}</tspan>
                 </>
               ) : (
-                item.name
+                displayLabel
               )}
             </text>
 
