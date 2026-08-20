@@ -186,6 +186,7 @@ export default function InsuranceApp() {
   }, []);
 
   // ---------- 保障數值標籤：可手動拖拉調整長寬、可拖曳移動位置 ----------
+  const BADGE_DRAGBAR_H = 16; // 頂部拖曳把手列高度
   const BADGE_DEFAULT = { w: 120, h: 50 };
   const [badgeSizes, setBadgeSizes] = useState({}); // { [itemId]: { w, h } }
   const getBadgeSize = (id) => badgeSizes[id] || BADGE_DEFAULT;
@@ -204,7 +205,7 @@ export default function InsuranceApp() {
         badgeRefs.current[id] = el;
         const ro = new ResizeObserver(() => {
           const w = Math.round(el.offsetWidth);
-          const h = Math.round(el.offsetHeight);
+          const h = Math.round(el.offsetHeight) + BADGE_DRAGBAR_H; // 加上拖曳把手列高度，還原整體外框高度
           setBadgeSizes((prev) => {
             const cur = prev[id] || BADGE_DEFAULT;
             if (cur.w === w && cur.h === h) return prev;
@@ -226,8 +227,9 @@ export default function InsuranceApp() {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const pt = svg.createSVGPoint();
-    pt.x = evt.clientX;
-    pt.y = evt.clientY;
+    const src = evt.touches && evt.touches.length > 0 ? evt.touches[0] : evt;
+    pt.x = src.clientX;
+    pt.y = src.clientY;
     const ctm = svg.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
     const svgP = pt.matrixTransform(ctm.inverse());
@@ -241,6 +243,7 @@ export default function InsuranceApp() {
     dragStateRef.current = { id, startSvgPt, startOffset };
     const onMove = (moveEvt) => {
       if (!dragStateRef.current) return;
+      moveEvt.preventDefault();
       const curPt = svgPointFromEvent(moveEvt);
       const dx = dragStateRef.current.startOffset.dx + (curPt.x - dragStateRef.current.startSvgPt.x);
       const dy = dragStateRef.current.startOffset.dy + (curPt.y - dragStateRef.current.startSvgPt.y);
@@ -250,9 +253,13 @@ export default function InsuranceApp() {
       dragStateRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
   };
   const [useAuthority, setUseAuthority] = useState(false);
   const [selectedSubType, setSelectedSubType] = useState(null); // 目前選中的子分類 id
@@ -500,44 +507,53 @@ export default function InsuranceApp() {
                   >
                     <div
                       xmlns="http://www.w3.org/1999/xhtml"
-                      ref={!isPrintVer ? getBadgeRefCallback(item.id) : undefined}
                       style={{
                         position: "relative",
                         width: `${size.w}px`, height: `${size.h}px`,
-                        minWidth: "56px", minHeight: "26px",
-                        maxWidth: "220px", maxHeight: "140px",
-                        boxSizing: "border-box", padding: "6px 8px",
-                        resize: isPrintVer ? "none" : "both",
-                        overflow: isPrintVer ? "visible" : "auto",
-                        cursor: isPrintVer ? "default" : "nwse-resize",
-                        fontSize: "10.5px", fontWeight: 700, color: "#4a3020",
-                        fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
-                        lineHeight: "14px", textAlign: "center",
-                        wordBreak: "break-word", whiteSpace: "normal",
-                        background: "transparent",
+                        minWidth: "56px",
+                        boxSizing: "border-box",
+                        display: "flex", flexDirection: "column",
                       }}
                     >
                       {!isPrintVer && (
                         <div
                           onMouseDown={handleBadgeDragStart(item.id)}
-                          title="拖曳移動文字框"
+                          onTouchStart={handleBadgeDragStart(item.id)}
+                          title="按住拖曳移動文字框"
                           style={{
-                            position: "absolute", top: 0, left: 0,
-                            width: "15px", height: "15px",
+                            flexShrink: 0,
+                            width: "100%", height: `${BADGE_DRAGBAR_H}px`,
                             cursor: "grab",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            color: item.color, opacity: 0.7,
-                            background: "rgba(255,255,255,0.7)",
-                            borderBottomRightRadius: "6px",
+                            pointerEvents: "auto",
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: "3px",
+                            background: "rgba(0,0,0,0.06)",
+                            borderTopLeftRadius: "7px", borderTopRightRadius: "7px",
+                            touchAction: "none",
                           }}
                         >
-                          <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
-                            <circle cx="5" cy="5" r="2.4" /><circle cx="12" cy="5" r="2.4" />
-                            <circle cx="5" cy="12" r="2.4" /><circle cx="12" cy="12" r="2.4" />
-                          </svg>
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
                         </div>
                       )}
-                      <div style={{ paddingLeft: !isPrintVer ? "12px" : 0 }}>
+                      <div
+                        ref={!isPrintVer ? getBadgeRefCallback(item.id) : undefined}
+                        style={{
+                          flex: 1, width: "100%",
+                          minWidth: "56px", minHeight: "18px",
+                          maxWidth: "220px", maxHeight: "124px",
+                          boxSizing: "border-box", padding: "5px 8px",
+                          resize: isPrintVer ? "none" : "both",
+                          overflow: isPrintVer ? "visible" : "auto",
+                          cursor: isPrintVer ? "default" : "nwse-resize",
+                          fontSize: "10.5px", fontWeight: 700, color: "#4a3020",
+                          fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
+                          lineHeight: "14px", textAlign: "center",
+                          wordBreak: "break-word", whiteSpace: "normal",
+                          background: "transparent",
+                        }}
+                      >
                         {values.map((v, idx) => (
                           <div key={idx}>{v}</div>
                         ))}
