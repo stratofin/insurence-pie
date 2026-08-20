@@ -185,31 +185,74 @@ export default function InsuranceApp() {
     return () => ro.disconnect();
   }, []);
 
-  // ---------- 保障數值標籤：可手動拖拉調整長寬 ----------
+  // ---------- 保障數值標籤：可手動拖拉調整長寬、可拖曳移動位置 ----------
   const BADGE_DEFAULT = { w: 120, h: 50 };
   const [badgeSizes, setBadgeSizes] = useState({}); // { [itemId]: { w, h } }
   const getBadgeSize = (id) => badgeSizes[id] || BADGE_DEFAULT;
   const badgeRefs = useRef({});
   const badgeObservers = useRef({});
-  const registerBadgeRef = (id) => (el) => {
-    if (!el) {
-      if (badgeObservers.current[id]) { badgeObservers.current[id].disconnect(); delete badgeObservers.current[id]; }
-      delete badgeRefs.current[id];
-      return;
+  const badgeRefCallbacks = useRef({}); // 每個 id 只建立一次 ref callback，避免每次 render 都重新 attach/detach
+  const getBadgeRefCallback = (id) => {
+    if (!badgeRefCallbacks.current[id]) {
+      badgeRefCallbacks.current[id] = (el) => {
+        if (!el) {
+          if (badgeObservers.current[id]) { badgeObservers.current[id].disconnect(); delete badgeObservers.current[id]; }
+          delete badgeRefs.current[id];
+          return;
+        }
+        if (badgeRefs.current[id] === el) return;
+        badgeRefs.current[id] = el;
+        const ro = new ResizeObserver(() => {
+          const w = Math.round(el.offsetWidth);
+          const h = Math.round(el.offsetHeight);
+          setBadgeSizes((prev) => {
+            const cur = prev[id] || BADGE_DEFAULT;
+            if (cur.w === w && cur.h === h) return prev;
+            return { ...prev, [id]: { w, h } };
+          });
+        });
+        ro.observe(el);
+        badgeObservers.current[id] = ro;
+      };
     }
-    if (badgeRefs.current[id] === el) return;
-    badgeRefs.current[id] = el;
-    const ro = new ResizeObserver(() => {
-      const w = Math.round(el.offsetWidth);
-      const h = Math.round(el.offsetHeight);
-      setBadgeSizes((prev) => {
-        const cur = prev[id] || BADGE_DEFAULT;
-        if (cur.w === w && cur.h === h) return prev;
-        return { ...prev, [id]: { w, h } };
-      });
-    });
-    ro.observe(el);
-    badgeObservers.current[id] = ro;
+    return badgeRefCallbacks.current[id];
+  };
+
+  // 拖曳移動文字框位置
+  const svgRef = useRef(null);
+  const [badgeOffsets, setBadgeOffsets] = useState({}); // { [itemId]: { dx, dy } }
+  const dragStateRef = useRef(null);
+  const svgPointFromEvent = (evt) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const svgP = pt.matrixTransform(ctm.inverse());
+    return { x: svgP.x, y: svgP.y };
+  };
+  const handleBadgeDragStart = (id) => (evt) => {
+    evt.preventDefault();
+    evt.stopPropagation();
+    const startSvgPt = svgPointFromEvent(evt);
+    const startOffset = badgeOffsets[id] || { dx: 0, dy: 0 };
+    dragStateRef.current = { id, startSvgPt, startOffset };
+    const onMove = (moveEvt) => {
+      if (!dragStateRef.current) return;
+      const curPt = svgPointFromEvent(moveEvt);
+      const dx = dragStateRef.current.startOffset.dx + (curPt.x - dragStateRef.current.startSvgPt.x);
+      const dy = dragStateRef.current.startOffset.dy + (curPt.y - dragStateRef.current.startSvgPt.y);
+      setBadgeOffsets((prev) => ({ ...prev, [dragStateRef.current.id]: { dx, dy } }));
+    };
+    const onUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
   const [useAuthority, setUseAuthority] = useState(false);
   const [selectedSubType, setSelectedSubType] = useState(null); // 目前選中的子分類 id
@@ -356,6 +399,7 @@ export default function InsuranceApp() {
   // forcedWidthPx 讓列印版固定尺寸，不受畫面縮放/手機版影響
   const renderChart = (idSuffix = "", forcedWidthPx = null) => (
     <svg
+      ref={idSuffix === "" ? svgRef : undefined}
       viewBox="-100 -100 600 600"
       style={{
         width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(92vw, 570px)" : `${Math.round(780 * chartScale)}px`),
@@ -428,15 +472,19 @@ export default function InsuranceApp() {
               )}
             </text>
 
-            {/* 保障數值標籤 — 固定在圓餅圖外圍，牽引線連回所屬區塊；可手動拖拉右下角調整長寬 */}
+            {/* 保障數值標籤 — 牽引線連回所屬區塊；左上角可拖曳移動位置，右下角可拖拉調整長寬 */}
             {coverageValues[item.id] && coverageValues[item.id].length > 0 && (() => {
               const isPrintVer = idSuffix !== "";
-              const edgePos  = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
-              const anchorPos = getLabelPos(cx, cy, outerR + 50, startAngle, endAngle);
+              const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
+              const baseAnchor = getLabelPos(cx, cy, outerR + 50, startAngle, endAngle);
+              const offset = badgeOffsets[item.id] || { dx: 0, dy: 0 };
+              const anchorPos = { x: baseAnchor.x + offset.dx, y: baseAnchor.y + offset.dy };
               const values = coverageValues[item.id];
               const size = getBadgeSize(item.id);
+              // key 隨數值內容變化 — 每次重新輸入/編輯保障數值時強制整個標籤重新掛載，
+              // 避免瀏覽器在 foreignObject 動態更新時殘留舊的圖形（俗稱「殘影」）造成看起來像兩個文字框
               return (
-                <g>
+                <g key={`badge-${item.id}-${values.join("§")}`}>
                   <line x1={edgePos.x} y1={edgePos.y} x2={anchorPos.x} y2={anchorPos.y} stroke={item.color} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
                   <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={item.color} style={{ pointerEvents: "none" }} />
                   <rect
@@ -452,8 +500,9 @@ export default function InsuranceApp() {
                   >
                     <div
                       xmlns="http://www.w3.org/1999/xhtml"
-                      ref={!isPrintVer ? registerBadgeRef(item.id) : undefined}
+                      ref={!isPrintVer ? getBadgeRefCallback(item.id) : undefined}
                       style={{
+                        position: "relative",
                         width: `${size.w}px`, height: `${size.h}px`,
                         minWidth: "56px", minHeight: "26px",
                         maxWidth: "220px", maxHeight: "140px",
@@ -468,9 +517,31 @@ export default function InsuranceApp() {
                         background: "transparent",
                       }}
                     >
-                      {values.map((v, idx) => (
-                        <div key={idx}>{v}</div>
-                      ))}
+                      {!isPrintVer && (
+                        <div
+                          onMouseDown={handleBadgeDragStart(item.id)}
+                          title="拖曳移動文字框"
+                          style={{
+                            position: "absolute", top: 0, left: 0,
+                            width: "15px", height: "15px",
+                            cursor: "grab",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            color: item.color, opacity: 0.7,
+                            background: "rgba(255,255,255,0.7)",
+                            borderBottomRightRadius: "6px",
+                          }}
+                        >
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="5" cy="5" r="2.4" /><circle cx="12" cy="5" r="2.4" />
+                            <circle cx="5" cy="12" r="2.4" /><circle cx="12" cy="12" r="2.4" />
+                          </svg>
+                        </div>
+                      )}
+                      <div style={{ paddingLeft: !isPrintVer ? "12px" : 0 }}>
+                        {values.map((v, idx) => (
+                          <div key={idx}>{v}</div>
+                        ))}
+                      </div>
                     </div>
                   </foreignObject>
                 </g>
