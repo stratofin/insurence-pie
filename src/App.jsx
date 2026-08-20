@@ -279,6 +279,18 @@ export default function InsuranceApp() {
   };
   const toggleCollapse = (id) => setCollapsedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  // 一鍵分行：把每一列裡貼上的多行文字（換行符號）拆成獨立的列
+  const splitRowsToLines = (id) => {
+    setCoverageDraft((prev) => {
+      const rows = prev[id] || [""];
+      const expanded = rows.flatMap((r) =>
+        r.split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s !== "")
+      );
+      return { ...prev, [id]: expanded.length > 0 ? expanded : [""] };
+    });
+    setCollapsedItems((prev) => ({ ...prev, [id]: false }));
+  };
+
   const handleCoverageDone = () => {
     const cleaned = {};
     Object.keys(coverageDraft).forEach((id) => {
@@ -1102,7 +1114,7 @@ export default function InsuranceApp() {
             {/* Modal body — scrollable list */}
             <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
               <p style={{ margin: "0 0 14px", fontSize: "0.78rem", color: "#9a8a80" }}>
-                每個類型可新增多列數值（最少 1 列），例如「300萬」或「日額2,000」。輸入完可收合，方便繼續填寫其他類型。
+                每個類型可新增多列數值（最少 1 列），例如「300萬」或「日額2,000」。若有已經分好行的文字，可直接貼到欄位裡再按「一鍵分行」自動拆成多列。輸入完可收合，方便繼續填寫其他類型。
               </p>
               {insuranceData.map((item) => {
                 const rows = coverageDraft[item.id] || [""];
@@ -1136,17 +1148,18 @@ export default function InsuranceApp() {
                     {!isCollapsed && (
                       <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
                         {rows.map((val, idx) => (
-                          <div key={idx} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                            <input
-                              type="text"
+                          <div key={idx} style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
+                            <textarea
+                              rows={1}
                               value={val}
                               onChange={(e) => updateCoverageRow(item.id, idx, e.target.value)}
-                              placeholder={`保障數值 ${idx + 1}`}
+                              placeholder={`保障數值 ${idx + 1}（可直接貼上多行文字）`}
                               style={{
                                 flex: 1, minWidth: 0, padding: "8px 12px", borderRadius: "8px",
                                 border: `1.5px solid ${item.color}`, outline: "none",
                                 fontSize: "0.85rem", color: "#3a2f28", fontFamily: "inherit",
-                                boxSizing: "border-box",
+                                boxSizing: "border-box", resize: "vertical",
+                                maxHeight: "110px", overflowY: "auto", lineHeight: "1.5",
                               }}
                             />
                             <button
@@ -1167,20 +1180,39 @@ export default function InsuranceApp() {
                             </button>
                           </div>
                         ))}
-                        <button
-                          onClick={() => addCoverageRow(item.id)}
-                          style={{
-                            alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "5px",
-                            padding: "6px 12px", borderRadius: "20px", border: `1.5px dashed ${item.color}`,
-                            background: "transparent", color: "#5a4a3a", fontSize: "0.76rem", fontWeight: 600,
-                            cursor: "pointer", fontFamily: "inherit",
-                          }}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
-                          新增一列
-                        </button>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button
+                            onClick={() => addCoverageRow(item.id)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: "5px",
+                              padding: "6px 12px", borderRadius: "20px", border: `1.5px dashed ${item.color}`,
+                              background: "transparent", color: "#5a4a3a", fontSize: "0.76rem", fontWeight: 600,
+                              cursor: "pointer", fontFamily: "inherit",
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            新增一列
+                          </button>
+                          <button
+                            onClick={() => splitRowsToLines(item.id)}
+                            title="把貼上的多行文字自動拆成獨立的列"
+                            style={{
+                              display: "flex", alignItems: "center", gap: "5px",
+                              padding: "6px 12px", borderRadius: "20px", border: "1.5px solid #8a9ab0",
+                              background: "transparent", color: "#4a5a70", fontSize: "0.76rem", fontWeight: 600,
+                              cursor: "pointer", fontFamily: "inherit",
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="3" y1="6" x2="15" y2="6" />
+                              <line x1="3" y1="12" x2="11" y2="12" />
+                              <line x1="3" y1="18" x2="13" y2="18" />
+                            </svg>
+                            一鍵分行
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
