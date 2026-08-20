@@ -628,24 +628,22 @@ export default function InsuranceApp() {
   const chartForPrint = renderChart("-print", 456);
 
   // ---------- Detail Panel ----------
-  // 桌機版：說明區改為彈性欄，會吃滿圓餅圖移到左邊後多出來的空間；內容參考寬度＝實際可用寬度／縮放比例
+  // 統一版面：圖表在上、說明在下，說明區永遠吃滿該欄可用寬度；內容參考寬度＝實際可用寬度／縮放比例
   const detailRefWidth = detailOuterWidth ? Math.round(detailOuterWidth / chartScale) : 400;
   const detailPanel = (
     <div
       ref={detailOuterRef}
       style={{
-        width: isMobile ? "100%" : undefined,
-        flex: isMobile ? undefined : "1 1 0%",
-        minWidth: isMobile ? "0" : `${Math.round(320 * chartScale)}px`,
-        height: isMobile ? "auto" : (detailNaturalHeight ? `${Math.round(detailNaturalHeight * chartScale)}px` : "auto"),
-        flexShrink: isMobile ? 0 : undefined,
+        width: "100%",
+        boxSizing: "border-box",
+        height: detailNaturalHeight ? `${Math.round(detailNaturalHeight * chartScale)}px` : "auto",
       }}
     >
     <div
       ref={detailContentRef}
       style={{
-        width: isMobile ? "100%" : `${detailRefWidth}px`,
-        transform: isMobile ? "none" : `scale(${chartScale})`,
+        width: `${detailRefWidth}px`,
+        transform: `scale(${chartScale})`,
         transformOrigin: "top left",
       }}
     >
@@ -1129,37 +1127,19 @@ export default function InsuranceApp() {
         </div>
       </div>
 
-      {/* Main content */}
-      {isMobile ? (
-        // ── Mobile: stacked vertically, centred, narrow ──
-        <div style={{
-          display: "flex", flexDirection: "column", alignItems: "center",
-          gap: "24px", padding: "28px 16px",
-          width: "100%", maxWidth: "440px", boxSizing: "border-box",
-        }}>
-          {chart}
-          {detailPanel}
-        </div>
-      ) : (
-        // ── Desktop: side by side — 圓餅圖靠左，左右留白與圖表到說明區的間距一致，
-        // 說明區則彈性吃滿右側剩餘空間，方便補充更多文字 ──
-        <div style={{
-          width: "100%", maxWidth: `${Math.round(1600 * chartScale)}px`,
-          boxSizing: "border-box", overflowX: "auto", margin: "0 auto",
-        }}>
-          <div style={{
-            display: "flex", flexDirection: "row",
-            alignItems: "center", justifyContent: "flex-start",
-            gap: `${Math.round(40 * chartScale)}px`,
-            padding: `36px ${Math.round(40 * chartScale)}px`,
-            width: "100%", boxSizing: "border-box",
-            flexWrap: "nowrap",
-          }}>
-            {chart}
-            {detailPanel}
-          </div>
-        </div>
-      )}
+      {/* Main content — 圖表在上、說明在下，電腦版與手機版排版一致，
+          讓保障數值文字框可以在圖表左右自由擺放，不會被說明區擋住 ── */}
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center",
+        gap: isMobile ? "24px" : `${Math.round(32 * chartScale)}px`,
+        padding: isMobile ? "28px 16px" : `36px ${Math.round(28 * chartScale)}px`,
+        width: "100%",
+        maxWidth: isMobile ? "440px" : `${Math.round(920 * chartScale)}px`,
+        boxSizing: "border-box", margin: "0 auto",
+      }}>
+        {chart}
+        {detailPanel}
+      </div>
 
       {/* ── 保障數值設定 Modal ── */}
       {showCoverageModal && (
