@@ -117,9 +117,9 @@ function getLabelPos(cx, cy, r, startAngle, endAngle) {
 }
 
 // SVG icon components
-function IconDesktop() {
+function IconDesktop({ size = 20 }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="3" width="20" height="14" rx="2" />
       <line x1="8" y1="21" x2="16" y2="21" />
       <line x1="12" y1="17" x2="12" y2="21" />
@@ -127,9 +127,9 @@ function IconDesktop() {
   );
 }
 
-function IconMobile() {
+function IconMobile({ size = 20 }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="5" y="2" width="14" height="20" rx="2" />
       <circle cx="12" cy="18" r="1" fill="currentColor" />
     </svg>
@@ -147,6 +147,14 @@ export default function InsuranceApp() {
   const [hoveredId, setHoveredId] = useState(null);
   const [centerHovered, setCenterHovered] = useState(false);
   const [viewMode, setViewMode] = useState("desktop"); // "desktop" | "mobile"
+
+  // 用手機開啟時自動切換成手機版排版，避免桌機版版面在小螢幕上卡住
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setViewMode("mobile");
+    }
+  }, []);
+
   const [chartScale, setChartScale] = useState(1.0);
   const scaleUp   = () => setChartScale(s => Math.min(1.5, +(s + 0.1).toFixed(1)));
   const scaleDown = () => setChartScale(s => Math.max(0.7, +(s - 0.1).toFixed(1)));
@@ -305,21 +313,23 @@ export default function InsuranceApp() {
   const saveSubDesc = (subId, text) => setSubDescriptions((prev) => ({ ...prev, [subId]: text }));
 
   // ---------- SVG Chart ----------
-  const chart = (
+  // idSuffix 讓同一份圖表可以在畫面與列印版各渲染一份，避免 SVG id 衝突
+  // forcedWidthPx 讓列印版固定尺寸，不受畫面縮放/手機版影響
+  const renderChart = (idSuffix = "", forcedWidthPx = null) => (
     <svg
       viewBox="-50 -50 500 500"
       style={{
-        width: isMobile ? "min(92vw, 475px)" : `${Math.round(650 * chartScale)}px`,
+        width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(92vw, 475px)" : `${Math.round(650 * chartScale)}px`),
         height: "auto",
         flexShrink: 0,
         display: "block",
       }}
     >
       <defs>
-        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <filter id={`shadow${idSuffix}`} x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="2" stdDeviation="5" floodColor="rgba(0,0,0,0.1)" />
         </filter>
-        <clipPath id="centerClip">
+        <clipPath id={`centerClip${idSuffix}`}>
           <circle cx={cx} cy={cy} r={innerR - 5} />
         </clipPath>
       </defs>
@@ -379,30 +389,46 @@ export default function InsuranceApp() {
               )}
             </text>
 
-            {/* 保障數值標籤 — 放在圓餅圖外圍，不覆蓋圖形本身 */}
+            {/* 保障數值標籤 — 放在圓餅圖外圍，多筆數值各自換行，長文字自動換行不重疊 */}
             {coverageValues[item.id] && coverageValues[item.id].length > 0 && (() => {
               const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
               const valPos  = getLabelPos(cx, cy, outerR + 27, startAngle, endAngle);
               const values = coverageValues[item.id];
-              const extra = values.length - 1;
-              const txt = extra > 0 ? `${values[0]} +${extra}` : values[0];
-              const boxW = Math.max(38, txt.length * 8.5 + 14);
+              const maxLen = Math.max(...values.map((v) => v.length));
+              const boxW = maxLen <= 6 ? Math.max(50, maxLen * 11 + 18) : 132;
+              const charsPerLine = Math.max(4, Math.floor((boxW - 16) / 11));
+              const totalLines = values.reduce((acc, v) => acc + Math.max(1, Math.ceil(v.length / charsPerLine)), 0);
+              const lineH = 14;
+              const boxH = totalLines * lineH + 14;
               return (
-                <g style={{ pointerEvents: "none" }}>
-                  <line x1={edgePos.x} y1={edgePos.y} x2={valPos.x} y2={valPos.y} stroke={item.color} strokeWidth="1.2" />
-                  <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={item.color} />
+                <g>
+                  <line x1={edgePos.x} y1={edgePos.y} x2={valPos.x} y2={valPos.y} stroke={item.color} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
+                  <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={item.color} style={{ pointerEvents: "none" }} />
                   <rect
-                    x={valPos.x - boxW / 2} y={valPos.y - 11}
-                    width={boxW} height={20} rx="10"
+                    x={valPos.x - boxW / 2} y={valPos.y - boxH / 2}
+                    width={boxW} height={boxH} rx="8"
                     fill="rgba(255,255,255,0.96)" stroke={item.color} strokeWidth="1.2"
+                    style={{ pointerEvents: "none" }}
                   />
-                  <text
-                    x={valPos.x} y={valPos.y + 1}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fontSize="11.5" fontWeight="700" fill="#4a3020"
+                  <foreignObject
+                    x={valPos.x - boxW / 2 + 4} y={valPos.y - boxH / 2 + 3}
+                    width={boxW - 8} height={boxH - 6}
+                    style={{ pointerEvents: "none", overflow: "visible" }}
                   >
-                    {txt}
-                  </text>
+                    <div
+                      xmlns="http://www.w3.org/1999/xhtml"
+                      style={{
+                        fontSize: "10.5px", fontWeight: 700, color: "#4a3020",
+                        fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
+                        lineHeight: `${lineH}px`, textAlign: "center",
+                        wordBreak: "break-all", whiteSpace: "normal",
+                      }}
+                    >
+                      {values.map((v, idx) => (
+                        <div key={idx}>{v}</div>
+                      ))}
+                    </div>
+                  </foreignObject>
                 </g>
               );
             })()}
@@ -411,11 +437,11 @@ export default function InsuranceApp() {
       })}
 
       {/* Center circle background */}
-      <circle cx={cx} cy={cy} r={innerR - 4} fill="white" filter="url(#shadow)" />
+      <circle cx={cx} cy={cy} r={innerR - 4} fill="white" filter={`url(#shadow${idSuffix})`} />
       <circle cx={cx} cy={cy} r={innerR - 4} fill="white" stroke="#e8ddd8" strokeWidth="1.5" />
 
       {/* Lower half colored (豁免保單) — clipped */}
-      <g clipPath="url(#centerClip)">
+      <g clipPath={`url(#centerClip${idSuffix})`}>
         <path
           d={`M ${cx - (innerR - 4)} ${cy} A ${innerR - 4} ${innerR - 4} 0 0 0 ${cx + (innerR - 4)} ${cy} Z`}
           fill={selected?.id === "center" ? "#9EB498" : centerHovered ? "#c4dab8" : "#ddecd6"}
@@ -458,6 +484,9 @@ export default function InsuranceApp() {
       />
     </svg>
   );
+
+  const chart = renderChart("");
+  const chartForPrint = renderChart("-print", 380);
 
   // ---------- Detail Panel ----------
   // 桌機版：說明區改為彈性欄，會吃滿圓餅圖移到左邊後多出來的空間；內容參考寬度＝實際可用寬度／縮放比例
@@ -748,18 +777,24 @@ export default function InsuranceApp() {
         WebkitBackdropFilter: "blur(16px)",
         borderBottom: "1px solid rgba(180,160,140,0.15)",
         boxShadow: "0 1px 24px rgba(160,130,100,0.07)",
-        padding: "16px 24px",
-        display: "grid", gridTemplateColumns: "auto 1fr auto", columnGap: "12px", alignItems: "center",
+        padding: isMobile ? "10px 12px" : "16px 24px",
+        display: "grid", gridTemplateColumns: "auto 1fr auto", columnGap: isMobile ? "8px" : "12px", alignItems: "center",
         position: "relative", zIndex: 10,
       }}>
-        {/* Left: Authority + Coverage buttons */}
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", justifySelf: "start" }}>
+        {/* Left: Authority + Coverage buttons — 手機版上下堆疊，桌機版左右並排 */}
+        <div style={{
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          gap: isMobile ? "6px" : "8px",
+          alignItems: isMobile ? "stretch" : "center",
+          justifySelf: "start",
+        }}>
           <button
             onClick={() => setUseAuthority((v) => !v)}
             title={useAuthority ? "切換回自訂說明" : "載入權威重點整理"}
             style={{
               display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: "6px", padding: "8px 13px", borderRadius: "20px",
+              gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
               border: useAuthority ? "1.5px solid #3a5634" : "1.5px solid #b0a090",
               background: useAuthority ? "#4a6844" : "rgba(255,255,255,0.85)",
               color: useAuthority ? "white" : "#5a4a3a",
@@ -779,7 +814,7 @@ export default function InsuranceApp() {
             title="輸入各類型保障數值"
             style={{
               display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: "6px", padding: "8px 13px", borderRadius: "20px",
+              gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
               border: hasCoverageData ? "1.5px solid #8a6a2a" : "1.5px solid #b0a090",
               background: hasCoverageData ? "#c99a3a" : "rgba(255,255,255,0.85)",
               color: hasCoverageData ? "white" : "#5a4a3a",
@@ -796,15 +831,17 @@ export default function InsuranceApp() {
         </div>
 
         {/* Title center */}
-        <div style={{ textAlign: "center", justifySelf: "center" }}>
-          <h1 style={{ margin: 0, fontSize: "1.45rem", fontWeight: 700, color: "#4a3f38", letterSpacing: "0.05em" }}>
+        <div style={{ textAlign: "center", justifySelf: "center", minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: isMobile ? "1rem" : "1.45rem", fontWeight: 700, color: "#4a3f38", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
             保險類型總覽
           </h1>
-          <p style={{ margin: "3px 0 0", fontSize: "0.82rem", color: "#8a7a72" }}>點擊各區塊查看說明</p>
+          {!isMobile && (
+            <p style={{ margin: "3px 0 0", fontSize: "0.82rem", color: "#8a7a72" }}>點擊各區塊查看說明</p>
+          )}
         </div>
 
-        {/* Right: export PDF + save/load + size control + view mode toggle */}
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", justifySelf: "end" }}>
+        {/* Right: export PDF + save/load + view mode toggle — 手機版與桌機版皆保持橫排，但相關按鈕兩兩成組上下堆疊 */}
+        <div style={{ display: "flex", gap: isMobile ? "6px" : "8px", alignItems: "center", justifySelf: "end" }}>
 
           {/* 輸出 PDF */}
           <button
@@ -918,32 +955,38 @@ export default function InsuranceApp() {
             </div>
           )}
 
-          <button
-            onClick={() => setViewMode("desktop")}
-            title="電腦版"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: "44px", height: "44px", borderRadius: "10px", border: "none",
-              background: viewMode === "desktop" ? "#4a3f38" : "#ede8e2",
-              color: viewMode === "desktop" ? "white" : "#7a6a60",
-              cursor: "pointer", transition: "all 0.2s",
-            }}
-          >
-            <IconDesktop />
-          </button>
-          <button
-            onClick={() => setViewMode("mobile")}
-            title="手機版"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: "44px", height: "44px", borderRadius: "10px", border: "none",
-              background: viewMode === "mobile" ? "#4a3f38" : "#ede8e2",
-              color: viewMode === "mobile" ? "white" : "#7a6a60",
-              cursor: "pointer", transition: "all 0.2s",
-            }}
-          >
-            <IconMobile />
-          </button>
+          {/* 電腦／手機 顯示切換 — 兩個一組上下堆疊，節省手機版橫向空間 */}
+          <div style={{
+            width: "44px", height: "44px", borderRadius: "10px",
+            overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0,
+          }}>
+            <button
+              onClick={() => setViewMode("desktop")}
+              title="電腦版"
+              style={{
+                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                border: "none", borderBottom: "1px solid rgba(0,0,0,0.12)",
+                background: viewMode === "desktop" ? "#4a3f38" : "#ede8e2",
+                color: viewMode === "desktop" ? "white" : "#7a6a60",
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+            >
+              <IconDesktop size={15} />
+            </button>
+            <button
+              onClick={() => setViewMode("mobile")}
+              title="手機版"
+              style={{
+                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                border: "none",
+                background: viewMode === "mobile" ? "#4a3f38" : "#ede8e2",
+                color: viewMode === "mobile" ? "white" : "#7a6a60",
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+            >
+              <IconMobile size={15} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1148,9 +1191,25 @@ export default function InsuranceApp() {
         <h1 style={{ fontSize: "20px", margin: "0 0 4px", color: "#2a2018", fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif" }}>
           保險保障數值總覽
         </h1>
-        <p style={{ fontSize: "12px", color: "#6a5a50", margin: "0 0 20px" }}>
+        <p style={{ fontSize: "12px", color: "#6a5a50", margin: "0 0 16px" }}>
           製表日期：{new Date().toLocaleDateString("zh-TW")}
         </p>
+
+        {/* 圓餅圖 — 一眼看出哪些保障已補齊、哪些還缺 */}
+        <div style={{ display: "flex", justifyContent: "center", margin: "0 0 18px" }}>
+          {chartForPrint}
+        </div>
+
+        {insuranceData.some((item) => !coverageValues[item.id] || coverageValues[item.id].length === 0) && (
+          <p style={{ fontSize: "12px", color: "#a04030", fontWeight: 600, margin: "0 0 16px", textAlign: "center" }}>
+            尚未設定保障數值：
+            {insuranceData
+              .filter((item) => !coverageValues[item.id] || coverageValues[item.id].length === 0)
+              .map((item) => item.name)
+              .join("、")}
+          </p>
+        )}
+
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
             <tr>
@@ -1187,7 +1246,10 @@ export default function InsuranceApp() {
             display: block !important;
             position: absolute; top: 0; left: 0; width: 100%;
             padding: 24px; box-sizing: border-box;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
           }
+          .print-summary svg { break-inside: avoid; page-break-inside: avoid; }
+          .print-summary table { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
     </div>
