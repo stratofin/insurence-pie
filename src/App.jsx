@@ -184,6 +184,33 @@ export default function InsuranceApp() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // ---------- 保障數值標籤：可手動拖拉調整長寬 ----------
+  const BADGE_DEFAULT = { w: 120, h: 50 };
+  const [badgeSizes, setBadgeSizes] = useState({}); // { [itemId]: { w, h } }
+  const getBadgeSize = (id) => badgeSizes[id] || BADGE_DEFAULT;
+  const badgeRefs = useRef({});
+  const badgeObservers = useRef({});
+  const registerBadgeRef = (id) => (el) => {
+    if (!el) {
+      if (badgeObservers.current[id]) { badgeObservers.current[id].disconnect(); delete badgeObservers.current[id]; }
+      delete badgeRefs.current[id];
+      return;
+    }
+    if (badgeRefs.current[id] === el) return;
+    badgeRefs.current[id] = el;
+    const ro = new ResizeObserver(() => {
+      const w = Math.round(el.offsetWidth);
+      const h = Math.round(el.offsetHeight);
+      setBadgeSizes((prev) => {
+        const cur = prev[id] || BADGE_DEFAULT;
+        if (cur.w === w && cur.h === h) return prev;
+        return { ...prev, [id]: { w, h } };
+      });
+    });
+    ro.observe(el);
+    badgeObservers.current[id] = ro;
+  };
   const [useAuthority, setUseAuthority] = useState(false);
   const [selectedSubType, setSelectedSubType] = useState(null); // 目前選中的子分類 id
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
@@ -317,9 +344,9 @@ export default function InsuranceApp() {
   // forcedWidthPx 讓列印版固定尺寸，不受畫面縮放/手機版影響
   const renderChart = (idSuffix = "", forcedWidthPx = null) => (
     <svg
-      viewBox="-50 -50 500 500"
+      viewBox="-100 -100 600 600"
       style={{
-        width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(92vw, 475px)" : `${Math.round(650 * chartScale)}px`),
+        width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(92vw, 570px)" : `${Math.round(780 * chartScale)}px`),
         height: "auto",
         flexShrink: 0,
         display: "block",
@@ -389,39 +416,44 @@ export default function InsuranceApp() {
               )}
             </text>
 
-            {/* 保障數值標籤 — 放在圓餅圖外圍，多筆數值各自換行，長文字自動換行不重疊 */}
+            {/* 保障數值標籤 — 固定在圓餅圖外圍，牽引線連回所屬區塊；可手動拖拉右下角調整長寬 */}
             {coverageValues[item.id] && coverageValues[item.id].length > 0 && (() => {
-              const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
-              const valPos  = getLabelPos(cx, cy, outerR + 27, startAngle, endAngle);
+              const isPrintVer = idSuffix !== "";
+              const edgePos  = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
+              const anchorPos = getLabelPos(cx, cy, outerR + 50, startAngle, endAngle);
               const values = coverageValues[item.id];
-              const maxLen = Math.max(...values.map((v) => v.length));
-              const boxW = maxLen <= 6 ? Math.max(50, maxLen * 11 + 18) : 132;
-              const charsPerLine = Math.max(4, Math.floor((boxW - 16) / 11));
-              const totalLines = values.reduce((acc, v) => acc + Math.max(1, Math.ceil(v.length / charsPerLine)), 0);
-              const lineH = 14;
-              const boxH = totalLines * lineH + 14;
+              const size = getBadgeSize(item.id);
               return (
                 <g>
-                  <line x1={edgePos.x} y1={edgePos.y} x2={valPos.x} y2={valPos.y} stroke={item.color} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
+                  <line x1={edgePos.x} y1={edgePos.y} x2={anchorPos.x} y2={anchorPos.y} stroke={item.color} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
                   <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={item.color} style={{ pointerEvents: "none" }} />
                   <rect
-                    x={valPos.x - boxW / 2} y={valPos.y - boxH / 2}
-                    width={boxW} height={boxH} rx="8"
-                    fill="rgba(255,255,255,0.96)" stroke={item.color} strokeWidth="1.2"
+                    x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
+                    width={size.w} height={size.h} rx="8"
+                    fill="rgba(255,255,255,0.97)" stroke={item.color} strokeWidth="1.2"
                     style={{ pointerEvents: "none" }}
                   />
                   <foreignObject
-                    x={valPos.x - boxW / 2 + 4} y={valPos.y - boxH / 2 + 3}
-                    width={boxW - 8} height={boxH - 6}
-                    style={{ pointerEvents: "none", overflow: "visible" }}
+                    x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
+                    width={size.w} height={size.h}
+                    style={{ overflow: "visible" }}
                   >
                     <div
                       xmlns="http://www.w3.org/1999/xhtml"
+                      ref={!isPrintVer ? registerBadgeRef(item.id) : undefined}
                       style={{
+                        width: `${size.w}px`, height: `${size.h}px`,
+                        minWidth: "56px", minHeight: "26px",
+                        maxWidth: "220px", maxHeight: "140px",
+                        boxSizing: "border-box", padding: "6px 8px",
+                        resize: isPrintVer ? "none" : "both",
+                        overflow: isPrintVer ? "visible" : "auto",
+                        cursor: isPrintVer ? "default" : "nwse-resize",
                         fontSize: "10.5px", fontWeight: 700, color: "#4a3020",
                         fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
-                        lineHeight: `${lineH}px`, textAlign: "center",
-                        wordBreak: "break-all", whiteSpace: "normal",
+                        lineHeight: "14px", textAlign: "center",
+                        wordBreak: "break-word", whiteSpace: "normal",
+                        background: "transparent",
                       }}
                     >
                       {values.map((v, idx) => (
@@ -486,7 +518,7 @@ export default function InsuranceApp() {
   );
 
   const chart = renderChart("");
-  const chartForPrint = renderChart("-print", 380);
+  const chartForPrint = renderChart("-print", 456);
 
   // ---------- Detail Panel ----------
   // 桌機版：說明區改為彈性欄，會吃滿圓餅圖移到左邊後多出來的空間；內容參考寬度＝實際可用寬度／縮放比例
