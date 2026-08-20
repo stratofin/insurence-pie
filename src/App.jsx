@@ -543,9 +543,11 @@ export default function InsuranceApp() {
                       <div
                         ref={!isPrintVer ? getBadgeRefCallback(item.id) : undefined}
                         style={{
-                          flex: 1, width: "100%",
+                          flexShrink: 0, flexGrow: 0,
+                          width: "100%",
+                          height: isPrintVer ? "auto" : `${Math.max(18, size.h - BADGE_DRAGBAR_H)}px`,
                           minWidth: "56px", minHeight: "18px",
-                          maxWidth: "220px", maxHeight: "124px",
+                          maxWidth: "220px", maxHeight: "300px",
                           boxSizing: "border-box", padding: "5px 8px",
                           resize: isPrintVer ? "none" : "both",
                           overflow: isPrintVer ? "visible" : "auto",
