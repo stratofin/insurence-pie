@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 
 const COVERAGE_STORAGE_KEY = "insuranceCoverageValues";
+const CHART_SETTINGS_STORAGE_KEY = "insuranceChartSettings";
 
 const centerItem = {
   id: "center",
@@ -149,6 +150,38 @@ export default function InsuranceApp() {
   const [hoveredId, setHoveredId] = useState(null);
   const [centerHovered, setCenterHovered] = useState(false);
   const [viewMode, setViewMode] = useState("desktop"); // "desktop" | "mobile"
+
+  // ---------- 圖形設定：每個項目的顏色與填色比率（保障是否買足的視覺呈現） ----------
+  const [colorOverrides, setColorOverrides] = useState({}); // { [id]: "#rrggbb" }
+  const [fillRatios, setFillRatios] = useState({});         // { [id]: 0~1 }
+  const [showChartSettingsModal, setShowChartSettingsModal] = useState(false);
+  const getItemColor = (item) => (item ? colorOverrides[item.id] || item.color : "#C9A9A4");
+  const getItemRatio = (id) => (typeof fillRatios[id] === "number" ? fillRatios[id] : 1);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CHART_SETTINGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.colors) setColorOverrides(parsed.colors);
+        if (parsed.ratios) setFillRatios(parsed.ratios);
+      }
+    } catch (e) { /* 忽略讀取失敗 */ }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHART_SETTINGS_STORAGE_KEY, JSON.stringify({ colors: colorOverrides, ratios: fillRatios }));
+    } catch (e) { /* 忽略儲存失敗（如無痕模式） */ }
+  }, [colorOverrides, fillRatios]);
+
+  const updateItemColor = (id, color) => setColorOverrides((prev) => ({ ...prev, [id]: color }));
+  const updateItemRatio = (id, ratio) => setFillRatios((prev) => ({ ...prev, [id]: ratio }));
+  const resetItemChartSettings = (id) => {
+    setColorOverrides((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    setFillRatios((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  };
+  const resetAllChartSettings = () => { setColorOverrides({}); setFillRatios({}); };
 
   // 用手機開啟時自動切換成手機版排版，避免桌機版版面在小螢幕上卡住
   useEffect(() => {
@@ -449,6 +482,17 @@ export default function InsuranceApp() {
         const isFourChar = displayLabel.length === 4;
         const splitAt = isFourChar ? 2 : 3;
 
+        // 圖形設定：自訂顏色 + 填色比率（保障不足時，只填一部分顏色，其餘留白）
+        const segColor = getItemColor(item);
+        const ratio = getItemRatio(item.id);
+        const boundaryR = innerR + ratio * (outerR - innerR);
+        const dimOpacity = selected && selected.id !== item.id ? 0.55 : 1;
+        const toRad = (deg) => (deg * Math.PI) / 180;
+        const bx1 = cx + boundaryR * Math.cos(toRad(startAngle)), by1 = cy + boundaryR * Math.sin(toRad(startAngle));
+        const bx2 = cx + boundaryR * Math.cos(toRad(endAngle)), by2 = cy + boundaryR * Math.sin(toRad(endAngle));
+        const boundaryLarge = endAngle - startAngle > 180 ? 1 : 0;
+        const boundaryPath = `M ${bx1} ${by1} A ${boundaryR} ${boundaryR} 0 ${boundaryLarge} 1 ${bx2} ${by2}`;
+
         return (
           <g
             key={item.id}
@@ -458,13 +502,40 @@ export default function InsuranceApp() {
             onMouseEnter={() => setHoveredId(item.id)}
             onMouseLeave={() => setHoveredId(null)}
           >
+            {/* 未達成部分：留白，顯示保障買不足 */}
+            {ratio < 1 && (
+              <path
+                d={getSegmentPath(cx, cy, outerR, boundaryR, startAngle, endAngle)}
+                fill="#faf6f0"
+                opacity={dimOpacity}
+                style={{ transition: "opacity 0.2s" }}
+              />
+            )}
+            {/* 已達成部分：依填色比率上色 */}
+            {ratio > 0 && (
+              <path
+                d={getSegmentPath(cx, cy, boundaryR, innerR, startAngle, endAngle)}
+                fill={segColor}
+                opacity={dimOpacity}
+                style={{ transition: "opacity 0.2s" }}
+              />
+            )}
+            {/* 比率分界虛線 */}
+            {ratio > 0 && ratio < 1 && (
+              <path
+                d={boundaryPath}
+                fill="none" stroke={segColor} strokeWidth="1.5" strokeDasharray="3,3"
+                opacity={dimOpacity * 0.9}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+            {/* 整體外框線，維持區塊分隔視覺 */}
             <path
               d={getSegmentPath(cx, cy, outerR, innerR, startAngle, endAngle)}
-              fill={item.color}
+              fill="none"
               stroke="white"
               strokeWidth="2.5"
-              opacity={selected && selected.id !== item.id ? 0.55 : 1}
-              style={{ transition: "opacity 0.2s" }}
+              style={{ pointerEvents: "none" }}
             />
             {/* 1.5× font sizes: 11→17, 13→20 */}
             <text
@@ -498,12 +569,12 @@ export default function InsuranceApp() {
               // 避免瀏覽器在 foreignObject 動態更新時殘留舊的圖形（俗稱「殘影」）造成看起來像兩個文字框
               return (
                 <g key={`badge-${item.id}-${values.join("§")}`}>
-                  <line x1={edgePos.x} y1={edgePos.y} x2={anchorPos.x} y2={anchorPos.y} stroke={item.color} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
-                  <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={item.color} style={{ pointerEvents: "none" }} />
+                  <line x1={edgePos.x} y1={edgePos.y} x2={anchorPos.x} y2={anchorPos.y} stroke={segColor} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
+                  <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={segColor} style={{ pointerEvents: "none" }} />
                   <rect
                     x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
                     width={size.w} height={size.h} rx="8"
-                    fill="rgba(255,255,255,0.97)" stroke={item.color} strokeWidth="1.2"
+                    fill="rgba(255,255,255,0.97)" stroke={segColor} strokeWidth="1.2"
                     style={{ pointerEvents: "none" }}
                   />
                   <foreignObject
@@ -537,10 +608,10 @@ export default function InsuranceApp() {
                             touchAction: "none",
                           }}
                         >
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: item.color, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
+                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
                         </div>
                       )}
                       <div
@@ -550,7 +621,7 @@ export default function InsuranceApp() {
                           width: "100%",
                           height: isPrintVer ? "auto" : `${Math.max(18, size.h - BADGE_DRAGBAR_H)}px`,
                           minWidth: "56px", minHeight: "18px",
-                          maxWidth: "220px", maxHeight: "300px",
+                          maxWidth: "480px", maxHeight: "600px",
                           boxSizing: "border-box", padding: "5px 8px",
                           resize: isPrintVer ? "none" : "both",
                           overflow: isPrintVer ? "visible" : "auto",
@@ -630,6 +701,7 @@ export default function InsuranceApp() {
   // ---------- Detail Panel ----------
   // 統一版面：圖表在上、說明在下，說明區永遠吃滿該欄可用寬度；內容參考寬度＝實際可用寬度／縮放比例
   const detailRefWidth = detailOuterWidth ? Math.round(detailOuterWidth / chartScale) : 400;
+  const selectedColor = getItemColor(selected); // 反映「圖形設定」自訂顏色
   const detailPanel = (
     <div
       ref={detailOuterRef}
@@ -653,7 +725,7 @@ export default function InsuranceApp() {
           borderRadius: "16px",
           padding: "24px",
           boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-          border: `2px solid ${selected.color}`,
+          border: `2px solid ${selectedColor}`,
           animation: "fadeIn 0.25s ease",
         }}>
           {/* Header row */}
@@ -661,7 +733,7 @@ export default function InsuranceApp() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{
                 width: "44px", height: "44px", borderRadius: "12px",
-                background: selected.color,
+                background: selectedColor,
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px",
               }}>{selected.icon}</div>
               <div>
@@ -675,7 +747,7 @@ export default function InsuranceApp() {
                 title="查看統計表（原始PDF）"
                 style={{
                   width: "36px", height: "36px", borderRadius: "9px", flexShrink: 0,
-                  background: selected.color, border: "none", cursor: "pointer",
+                  background: selectedColor, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   transition: "opacity 0.18s",
                 }}
@@ -691,7 +763,7 @@ export default function InsuranceApp() {
               </button>
             )}
           </div>
-          <div style={{ height: "3px", borderRadius: "2px", background: `linear-gradient(to right, ${selected.color}, transparent)`, marginBottom: "18px" }} />
+          <div style={{ height: "3px", borderRadius: "2px", background: `linear-gradient(to right, ${selectedColor}, transparent)`, marginBottom: "18px" }} />
 
           {/* ── 有子分類的項目 ── */}
           {subTypeData[selected.id] ? (() => {
@@ -716,8 +788,8 @@ export default function InsuranceApp() {
                         onClick={() => { setSelectedSubType(s.id); setSubEditing(false); }}
                         style={{
                           padding: "6px 12px", borderRadius: "20px",
-                          border: `1.5px solid ${selected.color}`,
-                          background: isActive ? selected.color : "transparent",
+                          border: `1.5px solid ${selectedColor}`,
+                          background: isActive ? selectedColor : "transparent",
                           color: isActive ? "#2a2018" : "#7a6a60",
                           fontSize: "0.82rem", fontWeight: isActive ? 700 : 400,
                           cursor: "pointer", fontFamily: "inherit", transition: "all 0.18s",
@@ -737,14 +809,14 @@ export default function InsuranceApp() {
                       rows={5}
                       style={{
                         width: "100%", padding: "12px",
-                        border: `1.5px solid ${selected.color}`, borderRadius: "10px",
+                        border: `1.5px solid ${selectedColor}`, borderRadius: "10px",
                         fontSize: "0.9rem", color: "#4a3f38", lineHeight: "1.7",
                         resize: "vertical", outline: "none", fontFamily: "inherit",
                         background: "#fafaf8", boxSizing: "border-box",
                       }}
                     />
                     <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                      <button onClick={() => { saveSubDesc(activeSub.id, subEditText); setSubEditing(false); }} style={{ flex: 1, padding: "10px", background: selected.color, color: "#3a2f28", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ 儲存</button>
+                      <button onClick={() => { saveSubDesc(activeSub.id, subEditText); setSubEditing(false); }} style={{ flex: 1, padding: "10px", background: selectedColor, color: "#3a2f28", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ 儲存</button>
                       <button onClick={() => setSubEditing(false)} style={{ padding: "10px 16px", background: "#f0ede8", color: "#6a5a50", border: "none", borderRadius: "8px", fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit" }}>取消</button>
                     </div>
                   </div>
@@ -776,14 +848,14 @@ export default function InsuranceApp() {
                 rows={5}
                 style={{
                   width: "100%", padding: "12px",
-                  border: `1.5px solid ${selected.color}`, borderRadius: "10px",
+                  border: `1.5px solid ${selectedColor}`, borderRadius: "10px",
                   fontSize: "0.9rem", color: "#4a3f38", lineHeight: "1.7",
                   resize: "vertical", outline: "none", fontFamily: "inherit",
                   background: "#fafaf8", boxSizing: "border-box",
                 }}
               />
               <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                <button onClick={handleSave} style={{ flex: 1, padding: "10px", background: selected.color, color: "#3a2f28", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ 儲存</button>
+                <button onClick={handleSave} style={{ flex: 1, padding: "10px", background: selectedColor, color: "#3a2f28", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ 儲存</button>
                 <button onClick={() => setEditing(false)} style={{ padding: "10px 16px", background: "#f0ede8", color: "#6a5a50", border: "none", borderRadius: "8px", fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit" }}>取消</button>
               </div>
             </div>
@@ -814,7 +886,7 @@ export default function InsuranceApp() {
                 {coverageValues[selected.id].map((v, idx) => (
                   <span key={idx} style={{
                     padding: "4px 10px", borderRadius: "20px",
-                    background: `${selected.color}33`, border: `1.5px solid ${selected.color}`,
+                    background: `${selectedColor}33`, border: `1.5px solid ${selectedColor}`,
                     fontSize: "0.78rem", color: "#4a3020", fontWeight: 600,
                   }}>{v}</span>
                 ))}
@@ -835,19 +907,22 @@ export default function InsuranceApp() {
       <div style={{ marginTop: "20px" }}>
         <p style={{ fontSize: "0.75rem", color: "#9a8a80", marginBottom: "8px", fontWeight: 600, letterSpacing: "0.05em" }}>所有類型</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
-          {[...insuranceData, centerItem].map((item) => (
+          {[...insuranceData, centerItem].map((item) => {
+            const legendColor = getItemColor(item);
+            return (
             <div key={item.id} onClick={() => handleSelect(item)} style={{
               display: "flex", alignItems: "center", gap: "5px",
               padding: "4px 9px", borderRadius: "20px",
-              background: selected?.id === item.id ? item.color : "rgba(255,255,255,0.8)",
-              border: `1.5px solid ${item.color}`,
+              background: selected?.id === item.id ? legendColor : "rgba(255,255,255,0.8)",
+              border: `1.5px solid ${legendColor}`,
               cursor: "pointer", fontSize: "0.8rem", color: "#4a3f38",
               fontWeight: selected?.id === item.id ? 700 : 400, transition: "all 0.2s",
             }}>
-              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: item.color, border: "1px solid rgba(0,0,0,0.1)", flexShrink: 0 }} />
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: legendColor, border: "1px solid rgba(0,0,0,0.1)", flexShrink: 0 }} />
               {item.name}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -963,6 +1038,26 @@ export default function InsuranceApp() {
             <span style={{ fontSize: "17px" }}>💰</span>
             <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
               保障數值
+            </span>
+          </button>
+
+          <button
+            onClick={() => setShowChartSettingsModal(true)}
+            title="調整圖形顏色與填色比率"
+            style={{
+              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
+              border: "1.5px solid #b0a090",
+              background: "rgba(255,255,255,0.85)",
+              color: "#5a4a3a",
+              cursor: "pointer", transition: "all 0.22s",
+              fontSize: "17px", lineHeight: 1,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+            }}
+          >
+            <span style={{ fontSize: "17px" }}>🎨</span>
+            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+              圖形設定
             </span>
           </button>
         </div>
@@ -1195,6 +1290,7 @@ export default function InsuranceApp() {
                 const rows = coverageDraft[item.id] || [""];
                 const filledCount = rows.filter((v) => v.trim() !== "").length;
                 const isCollapsed = !!collapsedItems[item.id];
+                const modalColor = getItemColor(item);
                 return (
                   <div key={item.id} style={{ marginBottom: "12px", border: "1px solid #ece4dc", borderRadius: "12px", overflow: "hidden" }}>
                     {/* Item header — click to expand/collapse */}
@@ -1207,7 +1303,7 @@ export default function InsuranceApp() {
                     >
                       <div style={{
                         width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0,
-                        background: item.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px",
+                        background: modalColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px",
                       }}>{item.icon}</div>
                       <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
                       <span style={{ fontSize: "0.7rem", color: "#9a8a80", flexShrink: 0 }}>
@@ -1231,7 +1327,7 @@ export default function InsuranceApp() {
                               placeholder={`保障數值 ${idx + 1}（可直接貼上多行文字）`}
                               style={{
                                 flex: 1, minWidth: 0, padding: "8px 12px", borderRadius: "8px",
-                                border: `1.5px solid ${item.color}`, outline: "none",
+                                border: `1.5px solid ${modalColor}`, outline: "none",
                                 fontSize: "0.85rem", color: "#3a2f28", fontFamily: "inherit",
                                 boxSizing: "border-box", resize: "vertical",
                                 maxHeight: "110px", overflowY: "auto", lineHeight: "1.5",
@@ -1260,7 +1356,7 @@ export default function InsuranceApp() {
                             onClick={() => addCoverageRow(item.id)}
                             style={{
                               display: "flex", alignItems: "center", gap: "5px",
-                              padding: "6px 12px", borderRadius: "20px", border: `1.5px dashed ${item.color}`,
+                              padding: "6px 12px", borderRadius: "20px", border: `1.5px dashed ${modalColor}`,
                               background: "transparent", color: "#5a4a3a", fontSize: "0.76rem", fontWeight: 600,
                               cursor: "pointer", fontFamily: "inherit",
                             }}
@@ -1312,6 +1408,157 @@ export default function InsuranceApp() {
               </button>
               <button
                 onClick={handleCoverageDone}
+                style={{
+                  flex: 1, padding: "10px 18px", borderRadius: "10px", border: "none",
+                  background: "#4a3f38", color: "white", fontSize: "0.9rem", fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 圖形設定 Modal：調整每個項目的顏色與填色比率（保障買不足時可視覺化呈現） ── */}
+      {showChartSettingsModal && (
+        <div
+          onClick={() => setShowChartSettingsModal(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(40,32,26,0.55)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "24px", boxSizing: "border-box",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white", borderRadius: "18px",
+              width: "100%", maxWidth: "480px", maxHeight: "82vh",
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              padding: "18px 22px", borderBottom: "1px solid #ece4dc",
+              display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "19px" }}>🎨</span>
+                <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700, color: "#3a2f28" }}>圖形設定</h3>
+              </div>
+              <button
+                onClick={() => setShowChartSettingsModal(false)}
+                title="關閉"
+                style={{
+                  width: "30px", height: "30px", borderRadius: "8px", border: "none",
+                  background: "#f0ede8", color: "#8a7a72", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal body — scrollable list */}
+            <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
+              <p style={{ margin: "0 0 14px", fontSize: "0.78rem", color: "#9a8a80" }}>
+                可自訂每個項目的顏色，並設定「填色比率」呈現保障是否買足——比如客戶保額只有一般水準的 10%，該區塊就只會填色 10%，其餘 90% 留白，一眼看出保障缺口。
+              </p>
+              {insuranceData.map((item) => {
+                const itemColor = getItemColor(item);
+                const ratioPct = Math.round(getItemRatio(item.id) * 100);
+                const hasOverride = colorOverrides[item.id] || typeof fillRatios[item.id] === "number";
+                return (
+                  <div key={item.id} style={{ marginBottom: "14px", border: "1px solid #ece4dc", borderRadius: "12px", padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                      <div style={{
+                        width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0,
+                        background: itemColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px",
+                      }}>{item.icon}</div>
+                      <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
+                      {hasOverride && (
+                        <button
+                          onClick={() => resetItemChartSettings(item.id)}
+                          title="重設此項目為預設顏色與 100% 填色"
+                          style={{
+                            fontSize: "0.7rem", color: "#9a8a80", background: "transparent",
+                            border: "1px solid #d8d0c8", borderRadius: "20px", padding: "3px 10px",
+                            cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+                          }}
+                        >
+                          重設
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                      <label style={{ fontSize: "0.76rem", color: "#8a7a72", width: "52px", flexShrink: 0 }}>顏色</label>
+                      <input
+                        type="color"
+                        value={itemColor}
+                        onChange={(e) => updateItemColor(item.id, e.target.value)}
+                        style={{
+                          width: "38px", height: "30px", padding: 0, border: "1.5px solid #ece4dc",
+                          borderRadius: "6px", cursor: "pointer", background: "none", flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontSize: "0.74rem", color: "#9a8a80", fontFamily: "monospace" }}>{itemColor}</span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <label style={{ fontSize: "0.76rem", color: "#8a7a72", width: "52px", flexShrink: 0 }}>填色比率</label>
+                      <input
+                        type="range"
+                        min="0" max="100" step="1"
+                        value={ratioPct}
+                        onChange={(e) => updateItemRatio(item.id, Number(e.target.value) / 100)}
+                        style={{ flex: 1, accentColor: itemColor, cursor: "pointer" }}
+                      />
+                      <input
+                        type="number"
+                        min="0" max="100" step="1"
+                        value={ratioPct}
+                        onChange={(e) => {
+                          const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                          updateItemRatio(item.id, v / 100);
+                        }}
+                        style={{
+                          width: "54px", padding: "5px 6px", borderRadius: "6px",
+                          border: "1.5px solid #ece4dc", fontSize: "0.8rem", color: "#3a2f28",
+                          fontFamily: "inherit", textAlign: "right", flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontSize: "0.78rem", color: "#8a7a72", flexShrink: 0 }}>%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{
+              padding: "14px 22px", borderTop: "1px solid #ece4dc",
+              display: "flex", gap: "10px", flexShrink: 0,
+            }}>
+              <button
+                onClick={resetAllChartSettings}
+                style={{
+                  padding: "10px 18px", borderRadius: "10px", border: "1.5px solid #d0c0b0",
+                  background: "transparent", color: "#8a6a50", fontSize: "0.9rem", fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                全部重設
+              </button>
+              <button
+                onClick={() => setShowChartSettingsModal(false)}
                 style={{
                   flex: 1, padding: "10px 18px", borderRadius: "10px", border: "none",
                   background: "#4a3f38", color: "white", fontSize: "0.9rem", fontWeight: 700,
