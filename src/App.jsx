@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from "react";
 
 const COVERAGE_STORAGE_KEY = "insuranceCoverageValues";
 const CHART_SETTINGS_STORAGE_KEY = "insuranceChartSettings";
+const COMPANY_STORAGE_KEY = "insuranceCompanyValues";
 
 const centerItem = {
   id: "center",
@@ -183,10 +184,13 @@ export default function InsuranceApp() {
   };
   const resetAllChartSettings = () => { setColorOverrides({}); setFillRatios({}); };
 
-  // 用手機開啟時自動切換成手機版排版，避免桌機版版面在小螢幕上卡住
+  // 用手機開啟時自動切換成手機版排版，避免桌機版版面在小螢幕上卡住；
+  // 並鎖定為手機版，不允許切換回電腦版（電腦版格式在手機上會跑版）
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setViewMode("mobile");
+      setIsMobileDevice(true);
     }
   }, []);
 
@@ -329,7 +333,49 @@ export default function InsuranceApp() {
     } catch (e) { /* ignore */ }
   }, []);
 
-  const hasCoverageData = Object.keys(coverageValues).length > 0;
+  // ---------- 同一項目可分別記錄多間保險公司的數值，並自動加總 ----------
+  const [companyValues, setCompanyValues] = useState({}); // { [id]: [{ id, name, amount }] } — 已完成資料
+  const [companyDraft, setCompanyDraft] = useState({});   // 編輯中的草稿
+  let companyRowSeq = 0;
+  const newCompanyRowId = () => `c${Date.now()}_${companyRowSeq++}`;
+
+  const normalizeCompanyValues = (data) => {
+    const out = {};
+    insuranceData.forEach((item) => {
+      const v = data?.[item.id];
+      if (Array.isArray(v)) {
+        const arr = v
+          .map((row) => ({ id: row.id || newCompanyRowId(), name: String(row.name || ""), amount: String(row.amount || "") }))
+          .filter((row) => row.name.trim() !== "" || row.amount.trim() !== "");
+        if (arr.length > 0) out[item.id] = arr;
+      }
+    });
+    return out;
+  };
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COMPANY_STORAGE_KEY);
+      if (saved) setCompanyValues(normalizeCompanyValues(JSON.parse(saved)));
+    } catch (e) { /* ignore */ }
+  }, []);
+
+  const getCompanyRows = (id) => companyValues[id] || [];
+  const getCompanyTotal = (id) =>
+    getCompanyRows(id).reduce((sum, row) => sum + (parseFloat(String(row.amount).replace(/[^0-9.\-]/g, "")) || 0), 0);
+
+  // 結合自由輸入的保障數值列 + 各保險公司數值 + 加總，供圖表文字框／說明面板／PDF 顯示
+  const getDisplayLines = (id) => {
+    const base = coverageValues[id] || [];
+    const companies = getCompanyRows(id);
+    if (companies.length === 0) return base;
+    const companyLines = companies.map((c) => `${c.name.trim() || "未命名保司"}：${c.amount.trim() || "0"}萬`);
+    const totalLine = `合計：${getCompanyTotal(id)}萬`;
+    return [...base, ...companyLines, totalLine];
+  };
+
+  const hasCoverageData =
+    Object.keys(coverageValues).length > 0 || Object.keys(companyValues).length > 0;
 
   const openCoverageModal = () => {
     const draft = {};
@@ -338,10 +384,38 @@ export default function InsuranceApp() {
       draft[item.id] = existing && existing.length ? [...existing] : [""];
     });
     setCoverageDraft(draft);
+    const cDraft = {};
+    insuranceData.forEach((item) => {
+      const existing = companyValues[item.id];
+      cDraft[item.id] = existing && existing.length ? existing.map((r) => ({ ...r })) : [];
+    });
+    setCompanyDraft(cDraft);
     setCollapsedItems({});
     setShowCoverageModal(true);
   };
   const closeCoverageModal = () => setShowCoverageModal(false);
+
+  const addCompanyRow = (id) => {
+    setCompanyDraft((prev) => ({
+      ...prev,
+      [id]: [...(prev[id] || []), { id: newCompanyRowId(), name: "", amount: "" }],
+    }));
+    setCollapsedItems((prev) => ({ ...prev, [id]: false }));
+  };
+  const removeCompanyRow = (id, rowId) => {
+    setCompanyDraft((prev) => ({
+      ...prev,
+      [id]: (prev[id] || []).filter((r) => r.id !== rowId),
+    }));
+  };
+  const updateCompanyRow = (id, rowId, field, value) => {
+    setCompanyDraft((prev) => ({
+      ...prev,
+      [id]: (prev[id] || []).map((r) => (r.id === rowId ? { ...r, [field]: value } : r)),
+    }));
+  };
+  const getCompanyDraftTotal = (id) =>
+    (companyDraft[id] || []).reduce((sum, row) => sum + (parseFloat(String(row.amount).replace(/[^0-9.\-]/g, "")) || 0), 0);
 
   const updateCoverageRow = (id, idx, value) => {
     setCoverageDraft((prev) => {
@@ -383,6 +457,16 @@ export default function InsuranceApp() {
       if (arr.length > 0) cleaned[id] = arr;
     });
     setCoverageValues(cleaned);
+
+    const cleanedCompanies = {};
+    Object.keys(companyDraft).forEach((id) => {
+      const arr = (companyDraft[id] || [])
+        .map((r) => ({ ...r, name: r.name.trim(), amount: r.amount.trim() }))
+        .filter((r) => r.name !== "" || r.amount !== "");
+      if (arr.length > 0) cleanedCompanies[id] = arr;
+    });
+    setCompanyValues(cleanedCompanies);
+
     setShowCoverageModal(false);
   };
   const handleCoverageClear = () => {
@@ -390,17 +474,24 @@ export default function InsuranceApp() {
     insuranceData.forEach((item) => { draft[item.id] = [""]; });
     setCoverageDraft(draft);
     setCoverageValues({});
+    setCompanyDraft({});
+    setCompanyValues({});
     setCollapsedItems({});
   };
   const flashMsg = (msg) => { setCoverageFlash(msg); setTimeout(() => setCoverageFlash(null), 1200); };
   const handleCoverageSave = () => {
-    try { localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(coverageValues)); flashMsg("saved"); }
-    catch (e) { /* ignore */ }
+    try {
+      localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(coverageValues));
+      localStorage.setItem(COMPANY_STORAGE_KEY, JSON.stringify(companyValues));
+      flashMsg("saved");
+    } catch (e) { /* ignore */ }
   };
   const handleCoverageLoad = () => {
     try {
       const saved = localStorage.getItem(COVERAGE_STORAGE_KEY);
       setCoverageValues(saved ? normalizeCoverageValues(JSON.parse(saved)) : {});
+      const savedCompanies = localStorage.getItem(COMPANY_STORAGE_KEY);
+      setCompanyValues(savedCompanies ? normalizeCompanyValues(JSON.parse(savedCompanies)) : {});
       flashMsg("loaded");
     } catch (e) { /* ignore */ }
   };
@@ -557,13 +648,13 @@ export default function InsuranceApp() {
             </text>
 
             {/* 保障數值標籤 — 牽引線連回所屬區塊；左上角可拖曳移動位置，右下角可拖拉調整長寬 */}
-            {coverageValues[item.id] && coverageValues[item.id].length > 0 && (() => {
+            {getDisplayLines(item.id).length > 0 && (() => {
               const isPrintVer = idSuffix !== "";
               const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
               const baseAnchor = getLabelPos(cx, cy, outerR + 50, startAngle, endAngle);
               const offset = badgeOffsets[item.id] || { dx: 0, dy: 0 };
               const anchorPos = { x: baseAnchor.x + offset.dx, y: baseAnchor.y + offset.dy };
-              const values = coverageValues[item.id];
+              const values = getDisplayLines(item.id);
               const size = getBadgeSize(item.id);
               // key 隨數值內容變化 — 每次重新輸入/編輯保障數值時強制整個標籤重新掛載，
               // 避免瀏覽器在 foreignObject 動態更新時殘留舊的圖形（俗稱「殘影」）造成看起來像兩個文字框
@@ -879,11 +970,11 @@ export default function InsuranceApp() {
           ))}
 
           {/* 保障數值列表 */}
-          {coverageValues[selected.id] && coverageValues[selected.id].length > 0 && (
+          {getDisplayLines(selected.id).length > 0 && (
             <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px dashed #e5ddd4" }}>
               <p style={{ margin: "0 0 8px", fontSize: "0.72rem", color: "#9a8a80", fontWeight: 600, letterSpacing: "0.05em" }}>保障數值</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {coverageValues[selected.id].map((v, idx) => (
+                {getDisplayLines(selected.id).map((v, idx) => (
                   <span key={idx} style={{
                     padding: "4px 10px", borderRadius: "20px",
                     background: `${selectedColor}33`, border: `1.5px solid ${selectedColor}`,
@@ -1193,27 +1284,31 @@ export default function InsuranceApp() {
             overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0,
           }}>
             <button
-              onClick={() => setViewMode("desktop")}
-              title="電腦版"
+              onClick={() => { if (!isMobileDevice) setViewMode("desktop"); }}
+              disabled={isMobileDevice}
+              title={isMobileDevice ? "手機瀏覽時鎖定手機版，電腦版格式會跑版" : "電腦版"}
               style={{
                 flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
                 border: "none", borderBottom: "1px solid rgba(0,0,0,0.12)",
-                background: viewMode === "desktop" ? "#4a3f38" : "#ede8e2",
-                color: viewMode === "desktop" ? "white" : "#7a6a60",
-                cursor: "pointer", transition: "all 0.2s",
+                background: isMobileDevice ? "#d8d2ca" : (viewMode === "desktop" ? "#4a3f38" : "#ede8e2"),
+                color: isMobileDevice ? "#a89e94" : (viewMode === "desktop" ? "white" : "#7a6a60"),
+                cursor: isMobileDevice ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
               }}
             >
               <IconDesktop size={15} />
             </button>
             <button
-              onClick={() => setViewMode("mobile")}
-              title="手機版"
+              onClick={() => { if (!isMobileDevice) setViewMode("mobile"); }}
+              disabled={isMobileDevice}
+              title={isMobileDevice ? "手機瀏覽時已鎖定手機版" : "手機版"}
               style={{
                 flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
                 border: "none",
-                background: viewMode === "mobile" ? "#4a3f38" : "#ede8e2",
-                color: viewMode === "mobile" ? "white" : "#7a6a60",
-                cursor: "pointer", transition: "all 0.2s",
+                background: isMobileDevice ? "#d8d2ca" : (viewMode === "mobile" ? "#4a3f38" : "#ede8e2"),
+                color: isMobileDevice ? "#a89e94" : (viewMode === "mobile" ? "white" : "#7a6a60"),
+                cursor: isMobileDevice ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
               }}
             >
               <IconMobile size={15} />
@@ -1289,6 +1384,7 @@ export default function InsuranceApp() {
               {insuranceData.map((item) => {
                 const rows = coverageDraft[item.id] || [""];
                 const filledCount = rows.filter((v) => v.trim() !== "").length;
+                const companyFilledCount = (companyDraft[item.id] || []).filter((r) => r.name.trim() !== "" || r.amount.trim() !== "").length;
                 const isCollapsed = !!collapsedItems[item.id];
                 const modalColor = getItemColor(item);
                 return (
@@ -1307,7 +1403,9 @@ export default function InsuranceApp() {
                       }}>{item.icon}</div>
                       <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
                       <span style={{ fontSize: "0.7rem", color: "#9a8a80", flexShrink: 0 }}>
-                        {filledCount > 0 ? `已輸入 ${filledCount} 筆` : "尚未輸入"}
+                        {filledCount > 0 || companyFilledCount > 0
+                          ? `已輸入 ${filledCount + companyFilledCount} 筆`
+                          : "尚未輸入"}
                       </span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a7a72" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
                         style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.18s", flexShrink: 0 }}>
@@ -1383,6 +1481,74 @@ export default function InsuranceApp() {
                             </svg>
                             一鍵分行
                           </button>
+                        </div>
+
+                        {/* 保險公司比較 — 同一項目可分別記錄多間保司的數值，自動加總 */}
+                        <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed #ece4dc" }}>
+                          <p style={{ margin: "0 0 8px", fontSize: "0.72rem", color: "#9a8a80", fontWeight: 600 }}>
+                            保險公司比較（可加總）
+                          </p>
+                          {(companyDraft[item.id] || []).map((row) => (
+                            <div key={row.id} style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "6px" }}>
+                              <input
+                                type="text"
+                                value={row.name}
+                                onChange={(e) => updateCompanyRow(item.id, row.id, "name", e.target.value)}
+                                placeholder="保險公司名稱"
+                                style={{
+                                  flex: 1.3, minWidth: 0, padding: "7px 10px", borderRadius: "8px",
+                                  border: `1.5px solid ${modalColor}`, outline: "none",
+                                  fontSize: "0.82rem", color: "#3a2f28", fontFamily: "inherit", boxSizing: "border-box",
+                                }}
+                              />
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={row.amount}
+                                onChange={(e) => updateCompanyRow(item.id, row.id, "amount", e.target.value)}
+                                placeholder="金額（萬）"
+                                style={{
+                                  flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: "8px",
+                                  border: `1.5px solid ${modalColor}`, outline: "none",
+                                  fontSize: "0.82rem", color: "#3a2f28", fontFamily: "inherit", boxSizing: "border-box",
+                                }}
+                              />
+                              <button
+                                onClick={() => removeCompanyRow(item.id, row.id)}
+                                title="移除這間保司"
+                                style={{
+                                  width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0, border: "none",
+                                  background: "#f5e2de", color: "#a04030", cursor: "pointer",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                }}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                                  <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
+                            <button
+                              onClick={() => addCompanyRow(item.id)}
+                              style={{
+                                display: "flex", alignItems: "center", gap: "5px",
+                                padding: "6px 12px", borderRadius: "20px", border: "1.5px dashed #8a9ab0",
+                                background: "transparent", color: "#4a5a70", fontSize: "0.76rem", fontWeight: 600,
+                                cursor: "pointer", fontFamily: "inherit",
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                              </svg>
+                              新增保險公司
+                            </button>
+                            {(companyDraft[item.id] || []).length > 0 && (
+                              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#4a3f38" }}>
+                                合計：{getCompanyDraftTotal(item.id)}萬
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1586,11 +1752,11 @@ export default function InsuranceApp() {
           {chartForPrint}
         </div>
 
-        {insuranceData.some((item) => !coverageValues[item.id] || coverageValues[item.id].length === 0) && (
+        {insuranceData.some((item) => getDisplayLines(item.id).length === 0) && (
           <p style={{ fontSize: "12px", color: "#a04030", fontWeight: 600, margin: "0 0 16px", textAlign: "center" }}>
             尚未設定保障數值：
             {insuranceData
-              .filter((item) => !coverageValues[item.id] || coverageValues[item.id].length === 0)
+              .filter((item) => getDisplayLines(item.id).length === 0)
               .map((item) => item.name)
               .join("、")}
           </p>
@@ -1605,12 +1771,12 @@ export default function InsuranceApp() {
           </thead>
           <tbody>
             {insuranceData.map((item) => {
-              const values = coverageValues[item.id];
+              const values = getDisplayLines(item.id);
               return (
                 <tr key={item.id}>
                   <td style={{ padding: "8px 10px", borderBottom: "1px solid #ddd3c8", fontWeight: 600 }}>{item.name}</td>
                   <td style={{ padding: "8px 10px", borderBottom: "1px solid #ddd3c8" }}>
-                    {values && values.length > 0 ? values.join("、") : "-"}
+                    {values.length > 0 ? values.join("、") : "-"}
                   </td>
                 </tr>
               );
