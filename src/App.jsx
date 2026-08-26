@@ -185,10 +185,15 @@ export default function InsuranceApp() {
   const resetAllChartSettings = () => { setColorOverrides({}); setFillRatios({}); };
 
   // 用手機開啟時自動切換成手機版排版，避免桌機版版面在小螢幕上卡住；
-  // 並鎖定為手機版，不允許切換回電腦版（電腦版格式在手機上會跑版）
+  // 並鎖定為手機版，不允許切換回電腦版（電腦版格式在手機上會跑版）。
+  // 用「裝置類型（User-Agent）」判斷，而非視窗寬度——避免電腦瀏覽器縮小視窗、
+  // 或在 Claude 工作台等桌面環境中以較窄畫面預覽時，被誤判成手機而鎖住。
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
+    const isRealMobile =
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
+    if (isRealMobile) {
       setViewMode("mobile");
       setIsMobileDevice(true);
     }
@@ -535,7 +540,9 @@ export default function InsuranceApp() {
       ref={idSuffix === "" ? svgRef : undefined}
       viewBox="-100 -100 600 600"
       style={{
-        width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(92vw, 570px)" : `${Math.round(780 * chartScale)}px`),
+        // 手機版寬度公式：viewBox 加大後，圓餅圖本身只佔 SVG 畫布約 58%，
+        // 這裡把 vw 係數同步放大（92→138），讓圓餅圖實際顯示大小恢復成加大 viewBox 之前的閱讀尺寸
+        width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(138vw, 570px)" : `${Math.round(780 * chartScale)}px`),
         height: "auto",
         flexShrink: 0,
         display: "block",
@@ -1020,6 +1027,286 @@ export default function InsuranceApp() {
     </div>
   );
 
+  // ---------- Header 按鈕群組 ----------
+  const leftButtonGroup = (
+    <div style={{
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      gap: isMobile ? "6px" : "8px",
+      alignItems: isMobile ? "stretch" : "center",
+    }}>
+      <button
+        onClick={() => setUseAuthority((v) => !v)}
+        title={useAuthority ? "切換回自訂說明" : "載入權威重點整理"}
+        style={{
+          display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
+          gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
+          border: useAuthority ? "1.5px solid #3a5634" : "1.5px solid #b0a090",
+          background: useAuthority ? "#4a6844" : "rgba(255,255,255,0.85)",
+          color: useAuthority ? "white" : "#5a4a3a",
+          cursor: "pointer", transition: "all 0.22s",
+          fontSize: "17px", lineHeight: 1,
+          boxShadow: useAuthority ? "0 2px 10px rgba(74,104,68,0.25)" : "0 1px 4px rgba(0,0,0,0.08)",
+        }}
+      >
+        <span style={{ fontSize: "17px" }}>💪</span>
+        <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+          {useAuthority ? "權威 ON" : "權威說明"}
+        </span>
+      </button>
+
+      <button
+        onClick={openCoverageModal}
+        title="輸入各類型保障數值"
+        style={{
+          display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
+          gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
+          border: hasCoverageData ? "1.5px solid #8a6a2a" : "1.5px solid #b0a090",
+          background: hasCoverageData ? "#c99a3a" : "rgba(255,255,255,0.85)",
+          color: hasCoverageData ? "white" : "#5a4a3a",
+          cursor: "pointer", transition: "all 0.22s",
+          fontSize: "17px", lineHeight: 1,
+          boxShadow: hasCoverageData ? "0 2px 10px rgba(201,154,58,0.28)" : "0 1px 4px rgba(0,0,0,0.08)",
+        }}
+      >
+        <span style={{ fontSize: "17px" }}>💰</span>
+        <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+          保障數值
+        </span>
+      </button>
+
+      <button
+        onClick={() => setShowChartSettingsModal(true)}
+        title="調整圖形顏色與填色比率"
+        style={{
+          display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
+          gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
+          border: "1.5px solid #b0a090",
+          background: "rgba(255,255,255,0.85)",
+          color: "#5a4a3a",
+          cursor: "pointer", transition: "all 0.22s",
+          fontSize: "17px", lineHeight: 1,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+        }}
+      >
+        <span style={{ fontSize: "17px" }}>🎨</span>
+        <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+          圖形設定
+        </span>
+      </button>
+    </div>
+  );
+
+  const rightButtonGroup = isMobile ? (
+    // 手機版：合併成單一直排區塊——存檔／讀取在上，列印在下；
+    // 電腦/手機切換已鎖定手機版、按了沒作用，手機上直接隱藏，避免佔位造成標題重疊
+    <div style={{
+      width: "44px", borderRadius: "10px",
+      background: "#ede8e2", overflow: "hidden",
+      display: "flex", flexDirection: "column", flexShrink: 0,
+    }}>
+      <button
+        onClick={handleCoverageSave}
+        title="本機存檔"
+        style={{
+          height: "34px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+          background: coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent",
+          border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
+          cursor: "pointer", color: coverageFlash === "saved" ? "#3a5634" : "#4a3f38",
+          transition: "background 0.15s, color 0.15s",
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+      </button>
+      <button
+        onClick={handleCoverageLoad}
+        title="讀取本機存檔"
+        style={{
+          height: "34px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+          background: coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent",
+          border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
+          cursor: "pointer", color: coverageFlash === "loaded" ? "#3a5634" : "#4a3f38",
+          transition: "background 0.15s, color 0.15s",
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <polyline points="21 3 21 9 15 9" />
+        </svg>
+      </button>
+      <button
+        onClick={handleExportPDF}
+        title="輸出保障數值 PDF"
+        style={{
+          height: "34px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+          background: "transparent", border: "none",
+          cursor: "pointer", color: "#7a6a60",
+          transition: "background 0.15s",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+      </button>
+    </div>
+  ) : (
+    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+
+      {/* 輸出 PDF */}
+      <button
+        onClick={handleExportPDF}
+        title="輸出保障數值 PDF"
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: "44px", height: "44px", borderRadius: "10px", border: "none",
+          background: "#ede8e2", color: "#7a6a60",
+          cursor: "pointer", transition: "all 0.2s", flexShrink: 0,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = "#e2dbd2"; }}
+        onMouseLeave={e => { e.currentTarget.style.background = "#ede8e2"; }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+      </button>
+
+      {/* 保障數值 本機存檔／讀取 */}
+      <div style={{
+        width: "44px", height: "44px", borderRadius: "10px",
+        background: "#ede8e2", overflow: "hidden",
+        display: "flex", flexDirection: "column", flexShrink: 0,
+      }}>
+        <button
+          onClick={handleCoverageSave}
+          title="本機存檔"
+          style={{
+            flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent",
+            border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
+            cursor: "pointer", color: coverageFlash === "saved" ? "#3a5634" : "#4a3f38",
+            transition: "background 0.15s, color 0.15s",
+          }}
+          onMouseEnter={e => { if (!coverageFlash) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
+          </svg>
+        </button>
+        <button
+          onClick={handleCoverageLoad}
+          title="讀取本機存檔"
+          style={{
+            flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent",
+            border: "none",
+            cursor: "pointer", color: coverageFlash === "loaded" ? "#3a5634" : "#4a3f38",
+            transition: "background 0.15s, color 0.15s",
+          }}
+          onMouseEnter={e => { if (!coverageFlash) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Size control — desktop only */}
+      <div style={{
+        width: "44px", height: "44px", borderRadius: "10px",
+        background: "#ede8e2", overflow: "hidden",
+        display: "flex", flexDirection: "column", flexShrink: 0,
+      }}>
+        <button
+          onClick={scaleUp}
+          title="放大"
+          disabled={chartScale >= 1.5}
+          style={{
+            flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "transparent", border: "none",
+            borderBottom: "1px solid rgba(0,0,0,0.09)",
+            cursor: chartScale < 1.5 ? "pointer" : "not-allowed",
+            color: chartScale < 1.5 ? "#4a3f38" : "#c0b0a0",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={e => { if (chartScale < 1.5) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+        </button>
+        <button
+          onClick={scaleDown}
+          title="縮小"
+          disabled={chartScale <= 0.7}
+          style={{
+            flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "transparent", border: "none",
+            cursor: chartScale > 0.7 ? "pointer" : "not-allowed",
+            color: chartScale > 0.7 ? "#4a3f38" : "#c0b0a0",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={e => { if (chartScale > 0.7) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </div>
+
+      {/* 電腦／手機 顯示切換 */}
+      <div style={{
+        width: "44px", height: "44px", borderRadius: "10px",
+        overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0,
+      }}>
+        <button
+          onClick={() => { if (!isMobileDevice) setViewMode("desktop"); }}
+          disabled={isMobileDevice}
+          title={isMobileDevice ? "手機瀏覽時鎖定手機版，電腦版格式會跑版" : "電腦版"}
+          style={{
+            flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none", borderBottom: "1px solid rgba(0,0,0,0.12)",
+            background: isMobileDevice ? "#d8d2ca" : (viewMode === "desktop" ? "#4a3f38" : "#ede8e2"),
+            color: isMobileDevice ? "#a89e94" : (viewMode === "desktop" ? "white" : "#7a6a60"),
+            cursor: isMobileDevice ? "not-allowed" : "pointer",
+            transition: "all 0.2s",
+          }}
+        >
+          <IconDesktop size={15} />
+        </button>
+        <button
+          onClick={() => { if (!isMobileDevice) setViewMode("mobile"); }}
+          disabled={isMobileDevice}
+          title={isMobileDevice ? "手機瀏覽時已鎖定手機版" : "手機版"}
+          style={{
+            flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            border: "none",
+            background: isMobileDevice ? "#d8d2ca" : (viewMode === "mobile" ? "#4a3f38" : "#ede8e2"),
+            color: isMobileDevice ? "#a89e94" : (viewMode === "mobile" ? "white" : "#7a6a60"),
+            cursor: isMobileDevice ? "not-allowed" : "pointer",
+            transition: "all 0.2s",
+          }}
+        >
+          <IconMobile size={15} />
+        </button>
+      </div>
+    </div>
+  );
+
   // ---------- Render ----------
   return (
     <div style={{
@@ -1081,80 +1368,12 @@ export default function InsuranceApp() {
         borderBottom: "1px solid rgba(180,160,140,0.15)",
         boxShadow: "0 1px 24px rgba(160,130,100,0.07)",
         padding: isMobile ? "10px 12px" : "16px 24px",
-        display: "grid", gridTemplateColumns: "auto 1fr auto", columnGap: isMobile ? "8px" : "12px", alignItems: "center",
+        display: "flex", flexDirection: "column",
+        gap: isMobile ? "10px" : "14px",
         position: "relative", zIndex: 10,
       }}>
-        {/* Left: Authority + Coverage buttons — 手機版上下堆疊，桌機版左右並排 */}
-        <div style={{
-          display: "flex",
-          flexDirection: isMobile ? "column" : "row",
-          gap: isMobile ? "6px" : "8px",
-          alignItems: isMobile ? "stretch" : "center",
-          justifySelf: "start",
-        }}>
-          <button
-            onClick={() => setUseAuthority((v) => !v)}
-            title={useAuthority ? "切換回自訂說明" : "載入權威重點整理"}
-            style={{
-              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
-              border: useAuthority ? "1.5px solid #3a5634" : "1.5px solid #b0a090",
-              background: useAuthority ? "#4a6844" : "rgba(255,255,255,0.85)",
-              color: useAuthority ? "white" : "#5a4a3a",
-              cursor: "pointer", transition: "all 0.22s",
-              fontSize: "17px", lineHeight: 1,
-              boxShadow: useAuthority ? "0 2px 10px rgba(74,104,68,0.25)" : "0 1px 4px rgba(0,0,0,0.08)",
-            }}
-          >
-            <span style={{ fontSize: "17px" }}>💪</span>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
-              {useAuthority ? "權威 ON" : "權威說明"}
-            </span>
-          </button>
-
-          <button
-            onClick={openCoverageModal}
-            title="輸入各類型保障數值"
-            style={{
-              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
-              border: hasCoverageData ? "1.5px solid #8a6a2a" : "1.5px solid #b0a090",
-              background: hasCoverageData ? "#c99a3a" : "rgba(255,255,255,0.85)",
-              color: hasCoverageData ? "white" : "#5a4a3a",
-              cursor: "pointer", transition: "all 0.22s",
-              fontSize: "17px", lineHeight: 1,
-              boxShadow: hasCoverageData ? "0 2px 10px rgba(201,154,58,0.28)" : "0 1px 4px rgba(0,0,0,0.08)",
-            }}
-          >
-            <span style={{ fontSize: "17px" }}>💰</span>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
-              保障數值
-            </span>
-          </button>
-
-          <button
-            onClick={() => setShowChartSettingsModal(true)}
-            title="調整圖形顏色與填色比率"
-            style={{
-              display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: "6px", padding: isMobile ? "6px 10px" : "8px 13px", borderRadius: "20px",
-              border: "1.5px solid #b0a090",
-              background: "rgba(255,255,255,0.85)",
-              color: "#5a4a3a",
-              cursor: "pointer", transition: "all 0.22s",
-              fontSize: "17px", lineHeight: 1,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-            }}
-          >
-            <span style={{ fontSize: "17px" }}>🎨</span>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
-              圖形設定
-            </span>
-          </button>
-        </div>
-
-        {/* Title center */}
-        <div style={{ textAlign: "center", justifySelf: "center", minWidth: 0 }}>
+        {/* 標題獨立一行放最上面，避免被下方按鈕群組擠壓重疊 */}
+        <div style={{ textAlign: "center" }}>
           <h1 style={{ margin: 0, fontSize: isMobile ? "1rem" : "1.45rem", fontWeight: 700, color: "#4a3f38", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
             保險類型總覽
           </h1>
@@ -1163,157 +1382,10 @@ export default function InsuranceApp() {
           )}
         </div>
 
-        {/* Right: export PDF + save/load + view mode toggle — 手機版與桌機版皆保持橫排，但相關按鈕兩兩成組上下堆疊 */}
-        <div style={{ display: "flex", gap: isMobile ? "6px" : "8px", alignItems: "center", justifySelf: "end" }}>
-
-          {/* 輸出 PDF */}
-          <button
-            onClick={handleExportPDF}
-            title="輸出保障數值 PDF"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: "44px", height: "44px", borderRadius: "10px", border: "none",
-              background: "#ede8e2", color: "#7a6a60",
-              cursor: "pointer", transition: "all 0.2s", flexShrink: 0,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = "#e2dbd2"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "#ede8e2"; }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-          </button>
-
-          {/* 保障數值 本機存檔／讀取 */}
-          <div style={{
-            width: "44px", height: "44px", borderRadius: "10px",
-            background: "#ede8e2", overflow: "hidden",
-            display: "flex", flexDirection: "column", flexShrink: 0,
-          }}>
-            <button
-              onClick={handleCoverageSave}
-              title="本機存檔"
-              style={{
-                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                background: coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent",
-                border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
-                cursor: "pointer", color: coverageFlash === "saved" ? "#3a5634" : "#4a3f38",
-                transition: "background 0.15s, color 0.15s",
-              }}
-              onMouseEnter={e => { if (!coverageFlash) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent"; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-            </button>
-            <button
-              onClick={handleCoverageLoad}
-              title="讀取本機存檔"
-              style={{
-                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                background: coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent",
-                border: "none",
-                cursor: "pointer", color: coverageFlash === "loaded" ? "#3a5634" : "#4a3f38",
-                transition: "background 0.15s, color 0.15s",
-              }}
-              onMouseEnter={e => { if (!coverageFlash) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent"; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                <polyline points="21 3 21 9 15 9" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Size control — desktop only */}
-          {!isMobile && (
-            <div style={{
-              width: "44px", height: "44px", borderRadius: "10px",
-              background: "#ede8e2", overflow: "hidden",
-              display: "flex", flexDirection: "column", flexShrink: 0,
-            }}>
-              <button
-                onClick={scaleUp}
-                title="放大"
-                disabled={chartScale >= 1.5}
-                style={{
-                  flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                  background: "transparent", border: "none",
-                  borderBottom: "1px solid rgba(0,0,0,0.09)",
-                  cursor: chartScale < 1.5 ? "pointer" : "not-allowed",
-                  color: chartScale < 1.5 ? "#4a3f38" : "#c0b0a0",
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={e => { if (chartScale < 1.5) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="18 15 12 9 6 15" />
-                </svg>
-              </button>
-              <button
-                onClick={scaleDown}
-                title="縮小"
-                disabled={chartScale <= 0.7}
-                style={{
-                  flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                  background: "transparent", border: "none",
-                  cursor: chartScale > 0.7 ? "pointer" : "not-allowed",
-                  color: chartScale > 0.7 ? "#4a3f38" : "#c0b0a0",
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={e => { if (chartScale > 0.7) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-            </div>
-          )}
-
-          {/* 電腦／手機 顯示切換 — 兩個一組上下堆疊，節省手機版橫向空間 */}
-          <div style={{
-            width: "44px", height: "44px", borderRadius: "10px",
-            overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0,
-          }}>
-            <button
-              onClick={() => { if (!isMobileDevice) setViewMode("desktop"); }}
-              disabled={isMobileDevice}
-              title={isMobileDevice ? "手機瀏覽時鎖定手機版，電腦版格式會跑版" : "電腦版"}
-              style={{
-                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                border: "none", borderBottom: "1px solid rgba(0,0,0,0.12)",
-                background: isMobileDevice ? "#d8d2ca" : (viewMode === "desktop" ? "#4a3f38" : "#ede8e2"),
-                color: isMobileDevice ? "#a89e94" : (viewMode === "desktop" ? "white" : "#7a6a60"),
-                cursor: isMobileDevice ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-              }}
-            >
-              <IconDesktop size={15} />
-            </button>
-            <button
-              onClick={() => { if (!isMobileDevice) setViewMode("mobile"); }}
-              disabled={isMobileDevice}
-              title={isMobileDevice ? "手機瀏覽時已鎖定手機版" : "手機版"}
-              style={{
-                flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                border: "none",
-                background: isMobileDevice ? "#d8d2ca" : (viewMode === "mobile" ? "#4a3f38" : "#ede8e2"),
-                color: isMobileDevice ? "#a89e94" : (viewMode === "mobile" ? "white" : "#7a6a60"),
-                cursor: isMobileDevice ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-              }}
-            >
-              <IconMobile size={15} />
-            </button>
-          </div>
+        {/* 按鈕群組：標題下方一列，左右分靠 */}
+        <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", width: "100%", gap: "8px" }}>
+          {leftButtonGroup}
+          {rightButtonGroup}
         </div>
       </div>
 
@@ -1324,7 +1396,7 @@ export default function InsuranceApp() {
         gap: isMobile ? "24px" : `${Math.round(32 * chartScale)}px`,
         padding: isMobile ? "28px 16px" : `36px ${Math.round(28 * chartScale)}px`,
         width: "100%",
-        maxWidth: isMobile ? "440px" : `${Math.round(920 * chartScale)}px`,
+        maxWidth: isMobile ? "600px" : `${Math.round(920 * chartScale)}px`,
         boxSizing: "border-box", margin: "0 auto",
       }}>
         {chart}
