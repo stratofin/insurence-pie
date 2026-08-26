@@ -184,18 +184,33 @@ export default function InsuranceApp() {
   };
   const resetAllChartSettings = () => { setColorOverrides({}); setFillRatios({}); };
 
-  // 用手機開啟時自動切換成手機版排版（僅作為預設值，不鎖定，仍可手動切換）——
-  // 用「裝置類型（User-Agent）」判斷，而非視窗寬度，避免電腦瀏覽器縮小視窗、
-  // 或在 Claude 工作台等桌面環境中以較窄畫面預覽時，被誤判成手機。
-  // 電腦/手機切換按鈕維持開放，方便摺疊手機展開成大螢幕後仍可自由切換成電腦版。
+  // 用手機開啟時自動切換成手機版排版，並鎖住「電腦版」按鈕（顏色變淺、按了沒作用）——
+  // 因為一般手機切到電腦版排版會跑版。用「裝置類型（User-Agent）」判斷是不是手機，
+  // 而非視窗寬度，避免電腦瀏覽器縮小視窗、或在 Claude 工作台等桌面環境用較窄畫面
+  // 預覽時被誤判成手機。
+  // 若偵測到目前是「展開中的摺疊手機」（手機裝置＋畫面寬度已經很寬），
+  // 則視為畫面夠大可以正常顯示電腦版，自動解鎖「電腦版」按鈕。
+  const FOLDABLE_UNFOLD_WIDTH = 600; // px，超過此寬度視為摺疊機已展開的大螢幕
+  const [isMobileUA, setIsMobileUA] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+
   useEffect(() => {
-    const isRealMobile =
+    const mobileUA =
       typeof navigator !== "undefined" &&
       /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
-    if (isRealMobile) {
-      setViewMode("mobile");
-    }
+    setIsMobileUA(mobileUA);
+    if (mobileUA) setViewMode("mobile");
   }, []);
+
+  useEffect(() => {
+    const onResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // 手機裝置、但畫面還沒展開變寬 → 鎖住電腦版按鈕；
+  // 手機裝置且畫面已展開超過門檻（判定為摺疊機展開）→ 解鎖
+  const lockDesktopButton = isMobileUA && windowWidth < FOLDABLE_UNFOLD_WIDTH;
 
   const [chartScale, setChartScale] = useState(1.0);
   const scaleUp   = () => setChartScale(s => Math.min(1.5, +(s + 0.1).toFixed(1)));
@@ -1210,20 +1225,23 @@ export default function InsuranceApp() {
         </button>
       </div>
 
-      {/* 電腦／手機 顯示切換 — 兩種裝置皆可手動切換，方便摺疊手機展開後改用電腦版 */}
+      {/* 電腦／手機 顯示切換 — 手機上「電腦版」預設鎖住（顏色較淺、按了沒作用）；
+          偵測到摺疊機展開成大螢幕時自動解鎖，恢復正常按鈕 */}
       <div style={{
         width: "44px", height: "44px", borderRadius: "10px",
         overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0,
       }}>
         <button
-          onClick={() => setViewMode("desktop")}
-          title="電腦版"
+          onClick={() => { if (!lockDesktopButton) setViewMode("desktop"); }}
+          disabled={lockDesktopButton}
+          title={lockDesktopButton ? "手機畫面較小，暫不支援電腦版（摺疊機展開後會自動解鎖）" : "電腦版"}
           style={{
             flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
             border: "none", borderBottom: "1px solid rgba(0,0,0,0.12)",
-            background: viewMode === "desktop" ? "#4a3f38" : "#ede8e2",
-            color: viewMode === "desktop" ? "white" : "#7a6a60",
-            cursor: "pointer", transition: "all 0.2s",
+            background: lockDesktopButton ? "#e5e0d8" : (viewMode === "desktop" ? "#4a3f38" : "#ede8e2"),
+            color: lockDesktopButton ? "#b8ada0" : (viewMode === "desktop" ? "white" : "#7a6a60"),
+            cursor: lockDesktopButton ? "not-allowed" : "pointer",
+            transition: "all 0.2s",
           }}
         >
           <IconDesktop size={15} />
