@@ -554,8 +554,13 @@ export default function InsuranceApp() {
       viewBox="-100 -100 600 600"
       style={{
         // 手機版寬度公式：viewBox 加大後，圓餅圖本身只佔 SVG 畫布約 58%，
-        // 這裡把 vw 係數同步放大（92→138），讓圓餅圖實際顯示大小恢復成加大 viewBox 之前的閱讀尺寸
-        width: forcedWidthPx ? `${forcedWidthPx}px` : (isMobile ? "min(138vw, 570px)" : `${Math.round(780 * chartScale)}px`),
+        // 這裡把 vw 係數同步放大（92→138），讓圓餅圖實際顯示大小恢復成加大 viewBox 之前的閱讀尺寸；
+        // 同時乘上 chartScale，讓手機版的放大/縮小按鈕也能生效
+        width: forcedWidthPx
+          ? `${forcedWidthPx}px`
+          : (isMobile
+              ? `min(${Math.round(138 * chartScale)}vw, ${Math.round(570 * chartScale)}px)`
+              : `${Math.round(780 * chartScale)}px`),
         height: "auto",
         flexShrink: 0,
         display: "block",
@@ -1328,21 +1333,37 @@ export default function InsuranceApp() {
         gap: isMobile ? "10px" : "14px",
         position: "relative", zIndex: 10,
       }}>
-        {/* 標題獨立一行放最上面，避免被下方按鈕群組擠壓重疊 */}
-        <div style={{ textAlign: "center" }}>
-          <h1 style={{ margin: 0, fontSize: isMobile ? "1rem" : "1.45rem", fontWeight: 700, color: "#4a3f38", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
-            保險類型總覽
-          </h1>
-          {!isMobile && (
-            <p style={{ margin: "3px 0 0", fontSize: "0.82rem", color: "#8a7a72" }}>點擊各區塊查看說明</p>
-          )}
-        </div>
+        {isMobile ? (
+          // 手機版：標題兩字一排、直式堆疊，直接放在左右按鈕群組中間，
+          // 不用另外空出一整行，畫面空間更省
+          <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", gap: "8px" }}>
+            {leftButtonGroup}
+            <h1 style={{
+              margin: 0, flexShrink: 0, textAlign: "center",
+              fontSize: "0.95rem", fontWeight: 700, color: "#4a3f38",
+              letterSpacing: "0.05em", lineHeight: "1.3",
+            }}>
+              保險<br />類型<br />總覽
+            </h1>
+            {rightButtonGroup}
+          </div>
+        ) : (
+          <>
+            {/* 標題獨立一行放最上面，避免被下方按鈕群組擠壓重疊 */}
+            <div style={{ textAlign: "center" }}>
+              <h1 style={{ margin: 0, fontSize: "1.45rem", fontWeight: 700, color: "#4a3f38", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+                保險類型總覽
+              </h1>
+              <p style={{ margin: "3px 0 0", fontSize: "0.82rem", color: "#8a7a72" }}>點擊各區塊查看說明</p>
+            </div>
 
-        {/* 按鈕群組：標題下方一列，左右分靠 */}
-        <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", width: "100%", gap: "8px" }}>
-          {leftButtonGroup}
-          {rightButtonGroup}
-        </div>
+            {/* 按鈕群組：標題下方一列，左右分靠 */}
+            <div style={{ display: "flex", flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", width: "100%", gap: "8px" }}>
+              {leftButtonGroup}
+              {rightButtonGroup}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main content — 圖表在上、說明在下，電腦版與手機版排版一致，
@@ -1352,7 +1373,7 @@ export default function InsuranceApp() {
         gap: isMobile ? "24px" : `${Math.round(32 * chartScale)}px`,
         padding: isMobile ? "28px 16px" : `36px ${Math.round(28 * chartScale)}px`,
         width: "100%",
-        maxWidth: isMobile ? "600px" : `${Math.round(920 * chartScale)}px`,
+        maxWidth: isMobile ? `${Math.round(600 * chartScale)}px` : `${Math.round(920 * chartScale)}px`,
         boxSizing: "border-box", margin: "0 auto",
       }}>
         {chart}
