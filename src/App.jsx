@@ -184,18 +184,16 @@ export default function InsuranceApp() {
   };
   const resetAllChartSettings = () => { setColorOverrides({}); setFillRatios({}); };
 
-  // 用手機開啟時自動切換成手機版排版，避免桌機版版面在小螢幕上卡住；
-  // 並鎖定為手機版，不允許切換回電腦版（電腦版格式在手機上會跑版）。
-  // 用「裝置類型（User-Agent）」判斷，而非視窗寬度——避免電腦瀏覽器縮小視窗、
-  // 或在 Claude 工作台等桌面環境中以較窄畫面預覽時，被誤判成手機而鎖住。
-  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  // 用手機開啟時自動切換成手機版排版（僅作為預設值，不鎖定，仍可手動切換）——
+  // 用「裝置類型（User-Agent）」判斷，而非視窗寬度，避免電腦瀏覽器縮小視窗、
+  // 或在 Claude 工作台等桌面環境中以較窄畫面預覽時，被誤判成手機。
+  // 電腦/手機切換按鈕維持開放，方便摺疊手機展開成大螢幕後仍可自由切換成電腦版。
   useEffect(() => {
     const isRealMobile =
       typeof navigator !== "undefined" &&
       /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
     if (isRealMobile) {
       setViewMode("mobile");
-      setIsMobileDevice(true);
     }
   }, []);
 
@@ -1097,66 +1095,10 @@ export default function InsuranceApp() {
     </div>
   );
 
-  const rightButtonGroup = isMobile ? (
-    // 手機版：合併成單一直排區塊——存檔／讀取在上，列印在下；
-    // 電腦/手機切換已鎖定手機版、按了沒作用，手機上直接隱藏，避免佔位造成標題重疊
-    <div style={{
-      width: "44px", borderRadius: "10px",
-      background: "#ede8e2", overflow: "hidden",
-      display: "flex", flexDirection: "column", flexShrink: 0,
-    }}>
-      <button
-        onClick={handleCoverageSave}
-        title="本機存檔"
-        style={{
-          height: "34px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-          background: coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent",
-          border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
-          cursor: "pointer", color: coverageFlash === "saved" ? "#3a5634" : "#4a3f38",
-          transition: "background 0.15s, color 0.15s",
-        }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
-          <polyline points="17 21 17 13 7 13 7 21" />
-          <polyline points="7 3 7 8 15 8" />
-        </svg>
-      </button>
-      <button
-        onClick={handleCoverageLoad}
-        title="讀取本機存檔"
-        style={{
-          height: "34px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-          background: coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent",
-          border: "none", borderBottom: "1px solid rgba(0,0,0,0.09)",
-          cursor: "pointer", color: coverageFlash === "loaded" ? "#3a5634" : "#4a3f38",
-          transition: "background 0.15s, color 0.15s",
-        }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <polyline points="21 3 21 9 15 9" />
-        </svg>
-      </button>
-      <button
-        onClick={handleExportPDF}
-        title="輸出保障數值 PDF"
-        style={{
-          height: "34px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-          background: "transparent", border: "none",
-          cursor: "pointer", color: "#7a6a60",
-          transition: "background 0.15s",
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 6 2 18 2 18 9" />
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-          <rect x="6" y="14" width="12" height="8" />
-        </svg>
-      </button>
-    </div>
-  ) : (
-    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+  // 四個按鈕功能（列印、存檔/讀取、尺寸調整、電腦/手機切換）統一用 2 個一排的網格排列，
+  // 電腦版與手機版共用同一份排版；同時考慮未來摺疊手機展開後畫面變大，仍可自由切換顯示模式
+  const rightButtonGroup = (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 44px)", gap: "8px" }}>
 
       {/* 輸出 PDF */}
       <button
@@ -1223,7 +1165,7 @@ export default function InsuranceApp() {
         </button>
       </div>
 
-      {/* Size control — desktop only */}
+      {/* 圖表尺寸調整 */}
       <div style={{
         width: "44px", height: "44px", borderRadius: "10px",
         background: "#ede8e2", overflow: "hidden",
@@ -1268,37 +1210,33 @@ export default function InsuranceApp() {
         </button>
       </div>
 
-      {/* 電腦／手機 顯示切換 */}
+      {/* 電腦／手機 顯示切換 — 兩種裝置皆可手動切換，方便摺疊手機展開後改用電腦版 */}
       <div style={{
         width: "44px", height: "44px", borderRadius: "10px",
         overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0,
       }}>
         <button
-          onClick={() => { if (!isMobileDevice) setViewMode("desktop"); }}
-          disabled={isMobileDevice}
-          title={isMobileDevice ? "手機瀏覽時鎖定手機版，電腦版格式會跑版" : "電腦版"}
+          onClick={() => setViewMode("desktop")}
+          title="電腦版"
           style={{
             flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
             border: "none", borderBottom: "1px solid rgba(0,0,0,0.12)",
-            background: isMobileDevice ? "#d8d2ca" : (viewMode === "desktop" ? "#4a3f38" : "#ede8e2"),
-            color: isMobileDevice ? "#a89e94" : (viewMode === "desktop" ? "white" : "#7a6a60"),
-            cursor: isMobileDevice ? "not-allowed" : "pointer",
-            transition: "all 0.2s",
+            background: viewMode === "desktop" ? "#4a3f38" : "#ede8e2",
+            color: viewMode === "desktop" ? "white" : "#7a6a60",
+            cursor: "pointer", transition: "all 0.2s",
           }}
         >
           <IconDesktop size={15} />
         </button>
         <button
-          onClick={() => { if (!isMobileDevice) setViewMode("mobile"); }}
-          disabled={isMobileDevice}
-          title={isMobileDevice ? "手機瀏覽時已鎖定手機版" : "手機版"}
+          onClick={() => setViewMode("mobile")}
+          title="手機版"
           style={{
             flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
             border: "none",
-            background: isMobileDevice ? "#d8d2ca" : (viewMode === "mobile" ? "#4a3f38" : "#ede8e2"),
-            color: isMobileDevice ? "#a89e94" : (viewMode === "mobile" ? "white" : "#7a6a60"),
-            cursor: isMobileDevice ? "not-allowed" : "pointer",
-            transition: "all 0.2s",
+            background: viewMode === "mobile" ? "#4a3f38" : "#ede8e2",
+            color: viewMode === "mobile" ? "white" : "#7a6a60",
+            cursor: "pointer", transition: "all 0.2s",
           }}
         >
           <IconMobile size={15} />
