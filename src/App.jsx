@@ -292,19 +292,36 @@ export default function InsuranceApp() {
     const svgP = pt.matrixTransform(ctm.inverse());
     return { x: svgP.x, y: svgP.y };
   };
-  const handleBadgeDragStart = (id) => (evt) => {
+  // 拖曳邊界：把文字框中心點限制在 viewBox 範圍內（略留緩衝），
+  // 避免滑鼠拖出視窗／畫面外時座標變成異常大的數值，導致 SVG 整個渲染爆掉、畫面變全白
+  const BADGE_DRAG_BOUND_MIN = -95;
+  const BADGE_DRAG_BOUND_MAX = 495;
+  const clampCenter = (min, max, half, val) => {
+    const lo = min + half, hi = max - half;
+    if (!isFinite(val)) return (min + max) / 2;
+    if (lo > hi) return (min + max) / 2;
+    return Math.min(Math.max(val, lo), hi);
+  };
+  const handleBadgeDragStart = (id, baseAnchor) => (evt) => {
     evt.preventDefault();
     evt.stopPropagation();
     const startSvgPt = svgPointFromEvent(evt);
     const startOffset = badgeOffsets[id] || { dx: 0, dy: 0 };
-    dragStateRef.current = { id, startSvgPt, startOffset };
+    const size = getBadgeSize(id);
+    dragStateRef.current = { id, startSvgPt, startOffset, baseAnchor, size };
     const onMove = (moveEvt) => {
       if (!dragStateRef.current) return;
       moveEvt.preventDefault();
       const curPt = svgPointFromEvent(moveEvt);
-      const dx = dragStateRef.current.startOffset.dx + (curPt.x - dragStateRef.current.startSvgPt.x);
-      const dy = dragStateRef.current.startOffset.dy + (curPt.y - dragStateRef.current.startSvgPt.y);
-      setBadgeOffsets((prev) => ({ ...prev, [dragStateRef.current.id]: { dx, dy } }));
+      const { startOffset, startSvgPt, baseAnchor, size, id } = dragStateRef.current;
+      const rawX = baseAnchor.x + startOffset.dx + (curPt.x - startSvgPt.x);
+      const rawY = baseAnchor.y + startOffset.dy + (curPt.y - startSvgPt.y);
+      // 限制文字框中心不能拖出畫面範圍，避免座標失控造成整個網站崩潰變白畫面
+      const clampedX = clampCenter(BADGE_DRAG_BOUND_MIN, BADGE_DRAG_BOUND_MAX, size.w / 2, rawX);
+      const clampedY = clampCenter(BADGE_DRAG_BOUND_MIN, BADGE_DRAG_BOUND_MAX, size.h / 2, rawY);
+      const dx = clampedX - baseAnchor.x;
+      const dy = clampedY - baseAnchor.y;
+      setBadgeOffsets((prev) => ({ ...prev, [id]: { dx, dy } }));
     };
     const onUp = () => {
       dragStateRef.current = null;
@@ -710,8 +727,8 @@ export default function InsuranceApp() {
                     >
                       {!isPrintVer && (
                         <div
-                          onMouseDown={handleBadgeDragStart(item.id)}
-                          onTouchStart={handleBadgeDragStart(item.id)}
+                          onMouseDown={handleBadgeDragStart(item.id, baseAnchor)}
+                          onTouchStart={handleBadgeDragStart(item.id, baseAnchor)}
                           title="按住拖曳移動文字框"
                           style={{
                             flexShrink: 0,
