@@ -18,6 +18,7 @@ const insuranceData = [
   { id: 1, name: "壽險",         color: "#C9A9A4", icon: "🏠", subtitle: "一般身故・家庭責任",             description: "任何原因而死亡。\n重要性：喪葬費、家庭責任、債務。" },
   { id: 2, name: "意外失能",     color: "#A4B5C9", icon: "⚡", subtitle: "一次性給付・11歲至80歲",          description: "好不了又死不了。\n重要性：失去工作、中斷收入（殘廢生活扶助金）、生活重新適應、單身找對象不容易。" },
   { id: 3, name: "意外日額",     color: "#C9B9A4", icon: "🏥", subtitle: "少額・保額×住院日數",             description: "外力突發／非疾病。\n重要性：請假扣薪、醫藥費損失、驚魂未定。" },
+  { id: 11, name: "意外骨折",   label: "骨折",     color: "#D4A4A4", icon: "🦴", subtitle: "依骨折表・部位倍數給付",          description: "依骨折部位與嚴重程度，依骨折表倍數給付。\n重要性：骨科手術耗材自費、復健療程、行動不便造成的照護與收入損失。" },
   { id: 9, name: "意外實支",     color: "#D4B89A", icon: "🧾", subtitle: "意外花費實報實銷・限額內給付",    description: "花多少賠多少（限額內給付收據）。\n重要性：請假扣薪、醫藥費損失、驚魂未定。" },
   { id: 4, name: "住院實支實付", color: "#A4C9B9", icon: "💊", subtitle: "多花多賠・限額內實報實銷",        description: "花多少賠多少（限額內給付收據）。\n重要性：二代健保自費項目增加、民眾荷包失血、只要額度夠醫生放心治療。" },
   { id: 5, name: "住院日額",     color: "#C4C0A0", icon: "📋", subtitle: "多花多賠・病房手術療養",          description: "定額給付住院天數（診斷證明書）。\n重要性：病房費、薪資損失、看護費、交通費營養品、減少家人負擔。" },
@@ -33,6 +34,7 @@ const authorityDescriptions = {
   1: "被保險人身故或完全失能時，給付一筆保險金，讓遺屬有資金維持生活、償還債務或撫養子女。分為定期壽險（特定期間保障，適合家庭主要經濟支柱在子女成長期使用）與終身壽險（終生保障，採平準保費制，年齡增長保費不上漲）。壽險保額建議以「家庭年支出×10年」為基準。",
   2: "因意外事故導致身體機能永久受損，依失能等級1–11級給付保險金（1級最重，理賠100%；11級最輕，理賠5%）。屬於一次性給付，用於支付失能當下的高昂醫療費用及後續生活需求，無等待期。與失能扶助險不同，失能扶助險為持續型月給付，二者功能互補。",
   3: "因意外傷害住院時，按「日額×住院天數」給付，與實際花費無關。骨折即使未住院也可按嚴重程度申請給付。同一次住院最高給付365天，保費便宜且無等待期。適合高風險工作族群及希望住院期間有穩定現金流的人，可用來補貼薪資損失或住院期間額外支出。",
+  11: "依保單所附「骨折別給付表」，依骨折部位（四肢、脊椎、顱骨等）與嚴重程度（完全骨折、不完全骨折、龜裂骨折）給付對應倍數的保險金，不需住院也能申請，理賠速度快。骨折復原期常需石膏固定、復健治療，且較長時間無法正常工作，建議搭配意外醫療實支實付，同時涵蓋醫療自費與骨折當下的現金需求。",
   4: "以「實際醫療費用」為理賠基準，在保障範圍及限額內「花多少、賠多少」。理賠項目涵蓋病房費、手術費及醫療雜費，特別適用於自費醫材、靶向藥物等健保不給付項目。新制採正本理賠，額度需足夠。建議優先投保，是目前最能彌補健保缺口的核心醫療險種。",
   5: "定額住院給付，不論實際花費多少，住院即按「日額×天數」給付。例如日額2,000元，即使花費不足仍全額賠付，可用於補貼薪資損失、看護費用或家屬往返交通費。同一次住院最高給付365天，條件簡單、保費低，適合作為實支實付的補充搭配。",
   10: "依保單所附「手術項目及費用表」，依手術等級（如1—10級）乘以基本保額倍數給付，部分保單另有實支實付型設計，可額外給付手術房、麻醉及特殊材料等自費差額。常見自費手術如達文西機械手臂、微創關節置換動輒十萬元以上，建議優先搭配實支實付型醫療險，確保高倍數手術也有對應保障。",
@@ -292,16 +294,11 @@ export default function InsuranceApp() {
     const svgP = pt.matrixTransform(ctm.inverse());
     return { x: svgP.x, y: svgP.y };
   };
-  // 拖曳邊界：把文字框中心點限制在 viewBox 範圍內（略留緩衝），
-  // 避免滑鼠拖出視窗／畫面外時座標變成異常大的數值，導致 SVG 整個渲染爆掉、畫面變全白
-  const BADGE_DRAG_BOUND_MIN = -95;
-  const BADGE_DRAG_BOUND_MAX = 495;
-  const clampCenter = (min, max, half, val) => {
-    const lo = min + half, hi = max - half;
-    if (!isFinite(val)) return (min + max) / 2;
-    if (lo > hi) return (min + max) / 2;
-    return Math.min(Math.max(val, lo), hi);
-  };
+  // 拖曳邊界：用「離圓心的距離」限制文字框中心點——
+  // 太近圓心會被推開（不能拖進圓餅圖裡面蓋住圖），太遠會被拉回（不會拖出頁面造成座標失控、
+  // 網站崩潰變白畫面），但中間留了很大的可用範圍，讓桌機版左右留白空間也能拖得到
+  const BADGE_MIN_DIST = 190;  // 略大於圓餅圖外圈半徑（outerR=160），避免蓋住圖
+  const BADGE_MAX_DIST = 900;  // 足夠拖到畫面左右留白處，但不會無限拖出去
   const handleBadgeDragStart = (id, baseAnchor) => (evt) => {
     evt.preventDefault();
     evt.stopPropagation();
@@ -313,12 +310,18 @@ export default function InsuranceApp() {
       if (!dragStateRef.current) return;
       moveEvt.preventDefault();
       const curPt = svgPointFromEvent(moveEvt);
-      const { startOffset, startSvgPt, baseAnchor, size, id } = dragStateRef.current;
+      const { startOffset, startSvgPt, baseAnchor, id } = dragStateRef.current;
       const rawX = baseAnchor.x + startOffset.dx + (curPt.x - startSvgPt.x);
       const rawY = baseAnchor.y + startOffset.dy + (curPt.y - startSvgPt.y);
-      // 限制文字框中心不能拖出畫面範圍，避免座標失控造成整個網站崩潰變白畫面
-      const clampedX = clampCenter(BADGE_DRAG_BOUND_MIN, BADGE_DRAG_BOUND_MAX, size.w / 2, rawX);
-      const clampedY = clampCenter(BADGE_DRAG_BOUND_MIN, BADGE_DRAG_BOUND_MAX, size.h / 2, rawY);
+      let vecX = rawX - cx;
+      let vecY = rawY - cy;
+      if (!isFinite(vecX) || !isFinite(vecY)) { vecX = 0; vecY = BADGE_MIN_DIST; }
+      let dist = Math.sqrt(vecX * vecX + vecY * vecY);
+      if (dist < 1e-6) { vecX = 0; vecY = 1; dist = 1; }
+      const clampedDist = Math.min(Math.max(dist, BADGE_MIN_DIST), BADGE_MAX_DIST);
+      const ratio = clampedDist / dist;
+      const clampedX = cx + vecX * ratio;
+      const clampedY = cy + vecY * ratio;
       const dx = clampedX - baseAnchor.x;
       const dy = clampedY - baseAnchor.y;
       setBadgeOffsets((prev) => ({ ...prev, [id]: { dx, dy } }));
@@ -411,6 +414,53 @@ export default function InsuranceApp() {
 
   const hasCoverageData =
     Object.keys(coverageValues).length > 0 || Object.keys(companyValues).length > 0;
+
+  // ---------- 上一步／下一步：記錄保障數值、保險公司數值、圖形顏色與填色比率的變更歷史 ----------
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const historyStackRef = useRef([{ coverageValues: {}, companyValues: {}, colorOverrides: {}, fillRatios: {} }]);
+  const historyIndexRef = useRef(0);
+  const isRestoringHistoryRef = useRef(false);
+
+  useEffect(() => {
+    if (isRestoringHistoryRef.current) { isRestoringHistoryRef.current = false; return; }
+    const snapshot = {
+      coverageValues: JSON.parse(JSON.stringify(coverageValues)),
+      companyValues: JSON.parse(JSON.stringify(companyValues)),
+      colorOverrides: JSON.parse(JSON.stringify(colorOverrides)),
+      fillRatios: JSON.parse(JSON.stringify(fillRatios)),
+    };
+    // 若曾經「上一步」過，此時再變更會截斷後面的「下一步」紀錄
+    const stack = historyStackRef.current.slice(0, historyIndexRef.current + 1);
+    stack.push(snapshot);
+    historyStackRef.current = stack;
+    historyIndexRef.current = stack.length - 1;
+    setHistoryIndex(historyIndexRef.current);
+  }, [coverageValues, companyValues, colorOverrides, fillRatios]);
+
+  const canUndoHistory = historyIndex > 0;
+  const canRedoHistory = historyIndex < historyStackRef.current.length - 1;
+
+  const applyHistorySnapshot = (snapshot) => {
+    isRestoringHistoryRef.current = true;
+    setCoverageValues(snapshot.coverageValues);
+    setCompanyValues(snapshot.companyValues);
+    setColorOverrides(snapshot.colorOverrides);
+    setFillRatios(snapshot.fillRatios);
+  };
+  const handleHistoryUndo = () => {
+    if (!canUndoHistory) return;
+    const newIndex = historyIndexRef.current - 1;
+    historyIndexRef.current = newIndex;
+    setHistoryIndex(newIndex);
+    applyHistorySnapshot(historyStackRef.current[newIndex]);
+  };
+  const handleHistoryRedo = () => {
+    if (!canRedoHistory) return;
+    const newIndex = historyIndexRef.current + 1;
+    historyIndexRef.current = newIndex;
+    setHistoryIndex(newIndex);
+    applyHistorySnapshot(historyStackRef.current[newIndex]);
+  };
 
   const openCoverageModal = () => {
     const draft = {};
@@ -1196,8 +1246,55 @@ export default function InsuranceApp() {
           onMouseLeave={e => { e.currentTarget.style.background = coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent"; }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-            <polyline points="21 3 21 9 15 9" />
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
+      </div>
+
+      {/* 上一步／下一步（復原／重做） */}
+      <div style={{
+        gridColumn: "1 / span 2",
+        width: "100%", height: "40px", borderRadius: "10px",
+        background: "#ede8e2", overflow: "hidden",
+        display: "flex", flexDirection: "row", flexShrink: 0,
+      }}>
+        <button
+          onClick={handleHistoryUndo}
+          disabled={!canUndoHistory}
+          title="上一步"
+          style={{
+            flex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "transparent", border: "none",
+            borderRight: "1px solid rgba(0,0,0,0.09)",
+            cursor: canUndoHistory ? "pointer" : "not-allowed",
+            color: canUndoHistory ? "#4a3f38" : "#c0b0a0",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={e => { if (canUndoHistory) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 14 4 9l5-5" />
+            <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+          </svg>
+        </button>
+        <button
+          onClick={handleHistoryRedo}
+          disabled={!canRedoHistory}
+          title="下一步"
+          style={{
+            flex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "transparent", border: "none",
+            cursor: canRedoHistory ? "pointer" : "not-allowed",
+            color: canRedoHistory ? "#4a3f38" : "#c0b0a0",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={e => { if (canRedoHistory) e.currentTarget.style.background = "rgba(0,0,0,0.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 14 5-5-5-5" />
+            <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
           </svg>
         </button>
       </div>
