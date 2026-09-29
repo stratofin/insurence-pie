@@ -298,7 +298,7 @@ export default function InsuranceApp() {
   // 太近圓心會被推開（不能拖進圓餅圖裡面蓋住圖），太遠會被拉回（不會拖出頁面造成座標失控、
   // 網站崩潰變白畫面），但中間留了很大的可用範圍，讓桌機版左右留白空間也能拖得到
   const BADGE_MIN_DIST = 190;  // 略大於圓餅圖外圈半徑（outerR=160），避免蓋住圖
-  const BADGE_MAX_DIST = 900;  // 足夠拖到畫面左右留白處，但不會無限拖出去
+  const BADGE_MAX_DIST = 4000; // 放得很大，桌機寬螢幕左右留白都能拖到；只防止真正無限大的座標值
   const handleBadgeDragStart = (id, baseAnchor) => (evt) => {
     evt.preventDefault();
     evt.stopPropagation();
