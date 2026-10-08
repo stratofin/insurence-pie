@@ -564,21 +564,92 @@ export default function InsuranceApp() {
     setCollapsedItems({});
   };
   const flashMsg = (msg) => { setCoverageFlash(msg); setTimeout(() => setCoverageFlash(null), 1200); };
-  const handleCoverageSave = () => {
+  // ---------- 存檔／讀取：存成 .json 檔，可自己選資料夾與檔名 ----------
+  // 支援「選擇存檔位置」視窗的瀏覽器（Chrome、Edge 桌機版）會跳出資料夾選擇；
+  // 其他瀏覽器（Safari、Firefox、手機）則改用下載方式，存到瀏覽器的下載位置
+  const buildSaveData = () => ({
+    app: "insurance-pie",
+    version: 1,
+    savedAt: new Date().toISOString(),
+    coverageValues, companyValues, colorOverrides, fillRatios, badgeOffsets, badgeSizes,
+  });
+  const defaultSaveFileName = () => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `保障圖表_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  };
+  const handleCoverageSave = async () => {
+    const data = buildSaveData();
+    const json = JSON.stringify(data, null, 2);
+    // 同時保留一份在瀏覽器內，作為備份
     try {
       localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(coverageValues));
       localStorage.setItem(COMPANY_STORAGE_KEY, JSON.stringify(companyValues));
-      flashMsg("saved");
     } catch (e) { /* ignore */ }
-  };
-  const handleCoverageLoad = () => {
     try {
-      const saved = localStorage.getItem(COVERAGE_STORAGE_KEY);
-      setCoverageValues(saved ? normalizeCoverageValues(JSON.parse(saved)) : {});
-      const savedCompanies = localStorage.getItem(COMPANY_STORAGE_KEY);
-      setCompanyValues(savedCompanies ? normalizeCompanyValues(JSON.parse(savedCompanies)) : {});
-      flashMsg("loaded");
-    } catch (e) { /* ignore */ }
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: defaultSaveFileName(),
+          types: [{ description: "保障圖表存檔", accept: { "application/json": [".json"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+      } else {
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = defaultSaveFileName();
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      flashMsg("saved");
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // 使用者按取消
+      alert("存檔失敗，請再試一次");
+    }
+  };
+
+  const applyLoadedData = (data) => {
+    if (!data || typeof data !== "object") throw new Error("bad file");
+    setCoverageValues(data.coverageValues ? normalizeCoverageValues(data.coverageValues) : {});
+    setCompanyValues(data.companyValues ? normalizeCompanyValues(data.companyValues) : {});
+    if (data.colorOverrides) setColorOverrides(data.colorOverrides);
+    if (data.fillRatios) setFillRatios(data.fillRatios);
+    if (data.badgeOffsets) setBadgeOffsets(data.badgeOffsets);
+    if (data.badgeSizes) setBadgeSizes(data.badgeSizes);
+    flashMsg("loaded");
+  };
+  const loadFileInputRef = useRef(null);
+  const handleLoadFileChosen = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // 讓同一個檔案可以重複選
+    if (!file) return;
+    try {
+      applyLoadedData(JSON.parse(await file.text()));
+    } catch (err) {
+      alert("讀取失敗：這個檔案不是保障圖表的存檔");
+    }
+  };
+  const handleCoverageLoad = async () => {
+    if (window.showOpenFilePicker) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: "保障圖表存檔", accept: { "application/json": [".json"] } }],
+          multiple: false,
+        });
+        const file = await handle.getFile();
+        applyLoadedData(JSON.parse(await file.text()));
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        alert("讀取失敗：這個檔案不是保障圖表的存檔");
+      }
+    } else if (loadFileInputRef.current) {
+      loadFileInputRef.current.click();
+    }
   };
 
   // 輸出 PDF — 使用瀏覽器列印（另存為 PDF），確保中文字體正常顯示
@@ -1186,6 +1257,13 @@ export default function InsuranceApp() {
   // 電腦版與手機版共用同一份排版；同時考慮未來摺疊手機展開後畫面變大，仍可自由切換顯示模式
   const rightButtonGroup = (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 44px)", gap: "8px" }}>
+      <input
+        ref={loadFileInputRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleLoadFileChosen}
+        style={{ display: "none" }}
+      />
 
       {/* 輸出 PDF */}
       <button
@@ -1215,7 +1293,7 @@ export default function InsuranceApp() {
       }}>
         <button
           onClick={handleCoverageSave}
-          title="本機存檔"
+          title="存檔（選擇存放位置）"
           style={{
             flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
             background: coverageFlash === "saved" ? "rgba(74,104,68,0.18)" : "transparent",
@@ -1234,7 +1312,7 @@ export default function InsuranceApp() {
         </button>
         <button
           onClick={handleCoverageLoad}
-          title="讀取本機存檔"
+          title="讀取存檔（選擇檔案）"
           style={{
             flex: 1, width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
             background: coverageFlash === "loaded" ? "rgba(74,104,68,0.18)" : "transparent",
