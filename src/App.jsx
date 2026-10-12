@@ -383,76 +383,88 @@ export default function InsuranceApp() {
   const [subEditing, setSubEditing] = useState(false);
   const [subEditText, setSubEditText] = useState("");
 
-  // ---------- 保障數值（每個類型可有多列，最少 1 列）----------
-  const [coverageValues, setCoverageValues] = useState({}); // { [id]: string[] } — 只存已完成、非空的資料
+  // ---------- 保障數值 ----------
+  // 每個類型可有多個「保險公司群組」，每個群組有自己的多列數值：
+  // coverageValues = { [itemId]: [{ id, company: "國泰"（可空白）, rows: ["300萬", ...] }] }
+  const [coverageValues, setCoverageValues] = useState({});
   const [showCoverageModal, setShowCoverageModal] = useState(false);
-  const [coverageDraft, setCoverageDraft] = useState({}); // { [id]: string[] } — 編輯中的草稿，允許空字串
+  const [coverageDraft, setCoverageDraft] = useState({}); // 編輯中的草稿，結構同上，允許空字串
   const [collapsedItems, setCollapsedItems] = useState({}); // { [id]: boolean } — 各項目展開/收合狀態
   const [coverageFlash, setCoverageFlash] = useState(null); // "saved" | "loaded" | null
+  // 顯示方式："separate" 依保險公司分開列出；"merged" 全部整合成一份清單
+  const [coverageViewMode, setCoverageViewMode] = useState("separate");
 
-  // 相容舊資料（字串或陣列皆可讀），只保留非空值
-  const normalizeCoverageValues = (data) => {
+  const groupSeqRef = useRef(0);
+  const newGroupId = () => `g${Date.now()}_${groupSeqRef.current++}`;
+
+  // 相容舊資料：字串、字串陣列、舊版「保險公司＋金額」都能讀進新的群組結構
+  const normalizeCoverageValues = (data, legacyCompanies = null) => {
     const out = {};
     insuranceData.forEach((item) => {
       const v = data?.[item.id];
-      let arr = [];
-      if (Array.isArray(v)) arr = v.map((x) => String(x).trim()).filter((x) => x !== "");
-      else if (typeof v === "string" && v.trim() !== "") arr = [v.trim()];
-      if (arr.length > 0) out[item.id] = arr;
+      let groups = [];
+      if (typeof v === "string" && v.trim() !== "") {
+        groups = [{ id: newGroupId(), company: "", rows: [v.trim()] }];
+      } else if (Array.isArray(v)) {
+        if (v.every((x) => typeof x !== "object" || x === null)) {
+          const rows = v.map((x) => String(x ?? "").trim()).filter((x) => x !== "");
+          if (rows.length) groups = [{ id: newGroupId(), company: "", rows }];
+        } else {
+          groups = v
+            .filter((g) => g && typeof g === "object")
+            .map((g) => ({
+              id: g.id || newGroupId(),
+              company: String(g.company || "").trim(),
+              rows: (Array.isArray(g.rows) ? g.rows : []).map((x) => String(x ?? "").trim()).filter((x) => x !== ""),
+            }))
+            .filter((g) => g.rows.length > 0 || g.company !== "");
+        }
+      }
+      const legacy = legacyCompanies?.[item.id];
+      if (Array.isArray(legacy)) {
+        legacy.forEach((row) => {
+          const name = String(row?.name || "").trim();
+          const amount = String(row?.amount || "").trim();
+          if (name || amount) groups.push({ id: newGroupId(), company: name, rows: amount ? [`${amount}萬`] : [] });
+        });
+      }
+      if (groups.length > 0) out[item.id] = groups;
     });
     return out;
   };
+
+  // 舊版的「保險公司比較」資料已整合進群組，這個 state 只保留給舊存檔／上一步紀錄相容使用
+  const [companyValues, setCompanyValues] = useState({});
+  const normalizeCompanyValues = () => ({});
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(COVERAGE_STORAGE_KEY);
-      if (saved) setCoverageValues(normalizeCoverageValues(JSON.parse(saved)));
-    } catch (e) { /* ignore */ }
-  }, []);
-
-  // ---------- 同一項目可分別記錄多間保險公司的數值，並自動加總 ----------
-  const [companyValues, setCompanyValues] = useState({}); // { [id]: [{ id, name, amount }] } — 已完成資料
-  const [companyDraft, setCompanyDraft] = useState({});   // 編輯中的草稿
-  let companyRowSeq = 0;
-  const newCompanyRowId = () => `c${Date.now()}_${companyRowSeq++}`;
-
-  const normalizeCompanyValues = (data) => {
-    const out = {};
-    insuranceData.forEach((item) => {
-      const v = data?.[item.id];
-      if (Array.isArray(v)) {
-        const arr = v
-          .map((row) => ({ id: row.id || newCompanyRowId(), name: String(row.name || ""), amount: String(row.amount || "") }))
-          .filter((row) => row.name.trim() !== "" || row.amount.trim() !== "");
-        if (arr.length > 0) out[item.id] = arr;
+      const savedCompanies = localStorage.getItem(COMPANY_STORAGE_KEY);
+      if (saved || savedCompanies) {
+        setCoverageValues(normalizeCoverageValues(
+          saved ? JSON.parse(saved) : {},
+          savedCompanies ? JSON.parse(savedCompanies) : null,
+        ));
       }
-    });
-    return out;
-  };
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(COMPANY_STORAGE_KEY);
-      if (saved) setCompanyValues(normalizeCompanyValues(JSON.parse(saved)));
     } catch (e) { /* ignore */ }
   }, []);
 
-  const getCompanyRows = (id) => companyValues[id] || [];
-  const getCompanyTotal = (id) =>
-    getCompanyRows(id).reduce((sum, row) => sum + (parseFloat(String(row.amount).replace(/[^0-9.\-]/g, "")) || 0), 0);
-
-  // 結合自由輸入的保障數值列 + 各保險公司數值 + 加總，供圖表文字框／說明面板／PDF 顯示
+  // 供圖表文字框／說明面板／PDF 顯示的文字列
   const getDisplayLines = (id) => {
-    const base = coverageValues[id] || [];
-    const companies = getCompanyRows(id);
-    if (companies.length === 0) return base;
-    const companyLines = companies.map((c) => `${c.name.trim() || "未命名保司"}：${c.amount.trim() || "0"}萬`);
-    const totalLine = `合計：${getCompanyTotal(id)}萬`;
-    return [...base, ...companyLines, totalLine];
+    const groups = coverageValues[id] || [];
+    if (coverageViewMode === "merged") {
+      return groups.flatMap((g) => g.rows);
+    }
+    const lines = [];
+    groups.forEach((g) => {
+      if (g.company) lines.push(`【${g.company}】`);
+      lines.push(...g.rows);
+    });
+    return lines;
   };
 
-  const hasCoverageData =
-    Object.keys(coverageValues).length > 0 || Object.keys(companyValues).length > 0;
+  const hasCoverageData = Object.keys(coverageValues).length > 0;
 
   // ---------- 上一步／下一步：記錄保障數值、保險公司數值、圖形顏色與填色比率的變更歷史 ----------
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -505,100 +517,132 @@ export default function InsuranceApp() {
     const draft = {};
     insuranceData.forEach((item) => {
       const existing = coverageValues[item.id];
-      draft[item.id] = existing && existing.length ? [...existing] : [""];
+      draft[item.id] = existing && existing.length
+        ? existing.map((g) => ({ id: g.id, company: g.company, rows: g.rows.length ? [...g.rows] : [""] }))
+        : [{ id: newGroupId(), company: "", rows: [""] }];
     });
     setCoverageDraft(draft);
-    const cDraft = {};
-    insuranceData.forEach((item) => {
-      const existing = companyValues[item.id];
-      cDraft[item.id] = existing && existing.length ? existing.map((r) => ({ ...r })) : [];
-    });
-    setCompanyDraft(cDraft);
     setCollapsedItems({});
     setShowCoverageModal(true);
   };
   const closeCoverageModal = () => setShowCoverageModal(false);
 
-  const addCompanyRow = (id) => {
-    setCompanyDraft((prev) => ({
-      ...prev,
-      [id]: [...(prev[id] || []), { id: newCompanyRowId(), name: "", amount: "" }],
-    }));
-    setCollapsedItems((prev) => ({ ...prev, [id]: false }));
+  // 草稿操作的共用 helper：修改某個類型的群組陣列
+  const updateDraftGroups = (id, fn) => {
+    setCoverageDraft((prev) => {
+      const groups = (prev[id] || [{ id: newGroupId(), company: "", rows: [""] }]).map((g) => ({ ...g, rows: [...g.rows] }));
+      const next = fn(groups);
+      return { ...prev, [id]: next };
+    });
   };
-  const removeCompanyRow = (id, rowId) => {
-    setCompanyDraft((prev) => ({
-      ...prev,
-      [id]: (prev[id] || []).filter((r) => r.id !== rowId),
-    }));
-  };
-  const updateCompanyRow = (id, rowId, field, value) => {
-    setCompanyDraft((prev) => ({
-      ...prev,
-      [id]: (prev[id] || []).map((r) => (r.id === rowId ? { ...r, [field]: value } : r)),
-    }));
-  };
-  const getCompanyDraftTotal = (id) =>
-    (companyDraft[id] || []).reduce((sum, row) => sum + (parseFloat(String(row.amount).replace(/[^0-9.\-]/g, "")) || 0), 0);
+  const getDraftGroups = (id) => coverageDraft[id] || [{ id: "_empty", company: "", rows: [""] }];
 
-  const updateCoverageRow = (id, idx, value) => {
-    setCoverageDraft((prev) => {
-      const arr = [...(prev[id] || [""])];
-      arr[idx] = value;
-      return { ...prev, [id]: arr };
-    });
-  };
-  const addCoverageRow = (id) => {
-    setCoverageDraft((prev) => ({ ...prev, [id]: [...(prev[id] || [""]), ""] }));
+  const updateCoverageRow = (id, gi, idx, value) =>
+    updateDraftGroups(id, (groups) => { if (groups[gi]) groups[gi].rows[idx] = value; return groups; });
+  const addCoverageRow = (id, gi) => {
+    updateDraftGroups(id, (groups) => { if (groups[gi]) groups[gi].rows.push(""); return groups; });
     setCollapsedItems((prev) => ({ ...prev, [id]: false }));
   };
-  const removeCoverageRow = (id, idx) => {
-    setCoverageDraft((prev) => {
-      const arr = [...(prev[id] || [""])];
-      if (arr.length <= 1) return prev; // 最少保留 1 列
-      arr.splice(idx, 1);
-      return { ...prev, [id]: arr };
+  const removeCoverageRow = (id, gi, idx) =>
+    updateDraftGroups(id, (groups) => {
+      const g = groups[gi];
+      if (!g) return groups;
+      if (g.rows.length <= 1) { g.rows = [""]; return groups; } // 最少保留 1 列（清空內容）
+      g.rows.splice(idx, 1);
+      return groups;
     });
+  const updateGroupCompany = (id, gi, value) =>
+    updateDraftGroups(id, (groups) => { if (groups[gi]) groups[gi].company = value; return groups; });
+  const addCompanyGroup = (id) => {
+    updateDraftGroups(id, (groups) => [...groups, { id: newGroupId(), company: "", rows: [""] }]);
+    setCollapsedItems((prev) => ({ ...prev, [id]: false }));
   };
+  const removeCompanyGroup = (id, gi) =>
+    updateDraftGroups(id, (groups) => {
+      if (groups.length <= 1) return [{ id: newGroupId(), company: "", rows: [""] }];
+      groups.splice(gi, 1);
+      return groups;
+    });
   const toggleCollapse = (id) => setCollapsedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  // 一鍵分行：把每一列裡貼上的多行文字（換行符號）拆成獨立的列
+  // 一鍵分行：把每一列裡貼上的多行文字（換行符號）拆成獨立的列（各保險公司分別處理）
   const splitRowsToLines = (id) => {
-    setCoverageDraft((prev) => {
-      const rows = prev[id] || [""];
-      const expanded = rows.flatMap((r) =>
-        r.split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s !== "")
-      );
-      return { ...prev, [id]: expanded.length > 0 ? expanded : [""] };
-    });
+    updateDraftGroups(id, (groups) => groups.map((g) => {
+      const expanded = g.rows.flatMap((r) => r.split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s !== ""));
+      return { ...g, rows: expanded.length > 0 ? expanded : [""] };
+    }));
     setCollapsedItems((prev) => ({ ...prev, [id]: false }));
+  };
+
+  // ---------- 按住左側把手上下拖曳，調整列的順序（也可以拖到同類型的其他保險公司） ----------
+  const [rowDrag, setRowDrag] = useState(null); // { itemId, gi, idx }
+  const rowDragRef = useRef(null);
+  const handleRowDragStart = (itemId, gi, idx) => (evt) => {
+    evt.preventDefault();
+    evt.stopPropagation();
+    rowDragRef.current = { itemId, gi, idx };
+    setRowDrag({ itemId, gi, idx });
+    const onMove = (moveEvt) => {
+      const cur = rowDragRef.current;
+      if (!cur) return;
+      if (moveEvt.cancelable) moveEvt.preventDefault();
+      const src = moveEvt.touches && moveEvt.touches.length ? moveEvt.touches[0] : moveEvt;
+      const el = document.elementFromPoint(src.clientX, src.clientY);
+      const rowEl = el && el.closest ? el.closest("[data-cov-row]") : null;
+      if (!rowEl || rowEl.dataset.item !== String(cur.itemId)) return;
+      const tGi = Number(rowEl.dataset.gi);
+      const tIdx = Number(rowEl.dataset.idx);
+      if (tGi === cur.gi && tIdx === cur.idx) return;
+      updateDraftGroups(cur.itemId, (groups) => {
+        const from = groups[cur.gi];
+        const to = groups[tGi];
+        if (!from || !to) return groups;
+        const [moved] = from.rows.splice(cur.idx, 1);
+        to.rows.splice(Math.min(tIdx, to.rows.length), 0, moved);
+        if (from.rows.length === 0) from.rows.push("");
+        return groups;
+      });
+      const next = { itemId: cur.itemId, gi: tGi, idx: tIdx };
+      rowDragRef.current = next;
+      setRowDrag(next);
+    };
+    const onUp = () => {
+      rowDragRef.current = null;
+      setRowDrag(null);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+      window.removeEventListener("touchcancel", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    window.addEventListener("touchcancel", onUp);
   };
 
   const handleCoverageDone = () => {
     const cleaned = {};
     Object.keys(coverageDraft).forEach((id) => {
-      const arr = (coverageDraft[id] || []).map((v) => v.trim()).filter((v) => v !== "");
-      if (arr.length > 0) cleaned[id] = arr;
+      const groups = (coverageDraft[id] || [])
+        .map((g) => ({
+          id: g.id,
+          company: (g.company || "").trim(),
+          rows: g.rows.map((v) => v.trim()).filter((v) => v !== ""),
+        }))
+        .filter((g) => g.rows.length > 0 || g.company !== "");
+      if (groups.length > 0) cleaned[id] = groups;
     });
     setCoverageValues(cleaned);
-
-    const cleanedCompanies = {};
-    Object.keys(companyDraft).forEach((id) => {
-      const arr = (companyDraft[id] || [])
-        .map((r) => ({ ...r, name: r.name.trim(), amount: r.amount.trim() }))
-        .filter((r) => r.name !== "" || r.amount !== "");
-      if (arr.length > 0) cleanedCompanies[id] = arr;
-    });
-    setCompanyValues(cleanedCompanies);
-
+    setCompanyValues({});
     setShowCoverageModal(false);
   };
   const handleCoverageClear = () => {
     const draft = {};
-    insuranceData.forEach((item) => { draft[item.id] = [""]; });
+    insuranceData.forEach((item) => { draft[item.id] = [{ id: newGroupId(), company: "", rows: [""] }]; });
     setCoverageDraft(draft);
     setCoverageValues({});
-    setCompanyDraft({});
     setCompanyValues({});
     setCollapsedItems({});
   };
@@ -610,7 +654,7 @@ export default function InsuranceApp() {
     app: "insurance-pie",
     version: 1,
     savedAt: new Date().toISOString(),
-    coverageValues, companyValues, colorOverrides, fillRatios, badgeOffsets, badgeSizes,
+    coverageValues, coverageViewMode, colorOverrides, fillRatios, badgeOffsets, badgeSizes,
   });
   const defaultSaveFileName = () => {
     const d = new Date();
@@ -623,7 +667,7 @@ export default function InsuranceApp() {
     // 同時保留一份在瀏覽器內，作為備份
     try {
       localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(coverageValues));
-      localStorage.setItem(COMPANY_STORAGE_KEY, JSON.stringify(companyValues));
+      localStorage.removeItem(COMPANY_STORAGE_KEY); // 舊版保司資料已整合進保障數值
     } catch (e) { /* ignore */ }
     try {
       if (window.showSaveFilePicker) {
@@ -654,8 +698,9 @@ export default function InsuranceApp() {
 
   const applyLoadedData = (data) => {
     if (!data || typeof data !== "object") throw new Error("bad file");
-    setCoverageValues(data.coverageValues ? normalizeCoverageValues(data.coverageValues) : {});
-    setCompanyValues(data.companyValues ? normalizeCompanyValues(data.companyValues) : {});
+    setCoverageValues(normalizeCoverageValues(data.coverageValues || {}, data.companyValues || null));
+    setCompanyValues({});
+    if (data.coverageViewMode === "merged" || data.coverageViewMode === "separate") setCoverageViewMode(data.coverageViewMode);
     if (data.colorOverrides) setColorOverrides(data.colorOverrides);
     if (data.fillRatios) setFillRatios(data.fillRatios);
     if (data.badgeOffsets) setBadgeOffsets(data.badgeOffsets);
@@ -1664,13 +1709,37 @@ export default function InsuranceApp() {
 
             {/* Modal body — scrollable list */}
             <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
-              <p style={{ margin: "0 0 14px", fontSize: "0.78rem", color: "#9a8a80" }}>
-                每個類型可新增多列數值（最少 1 列），例如「300萬」或「日額2,000」。若有已經分好行的文字，可直接貼到欄位裡再按「一鍵分行」自動拆成多列。輸入完可收合，方便繼續填寫其他類型。
+              <p style={{ margin: "0 0 12px", fontSize: "0.78rem", color: "#9a8a80" }}>
+                每個類型可依保險公司分組，各自新增多列數值（例如「300萬」或「日額2,000」）。按住每列左邊的 ⋮⋮ 把手可上下拖曳調整順序，也能拖到同類型的其他保險公司。已分好行的文字可直接貼上再按「一鍵分行」。
               </p>
+
+              {/* 顯示方式：分開（依保險公司列出）／整合（合併成一份清單） */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 600, color: "#6a5a50" }}>圖表顯示方式：</span>
+                <div style={{ display: "flex", background: "#f0ede8", borderRadius: "20px", padding: "3px" }}>
+                  {[
+                    { key: "separate", label: "依保險公司分開" },
+                    { key: "merged", label: "整合檢視" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      onClick={() => setCoverageViewMode(opt.key)}
+                      style={{
+                        padding: "5px 12px", borderRadius: "16px", border: "none",
+                        background: coverageViewMode === opt.key ? "#4a3f38" : "transparent",
+                        color: coverageViewMode === opt.key ? "white" : "#6a5a50",
+                        fontSize: "0.74rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {insuranceData.map((item) => {
-                const rows = coverageDraft[item.id] || [""];
-                const filledCount = rows.filter((v) => v.trim() !== "").length;
-                const companyFilledCount = (companyDraft[item.id] || []).filter((r) => r.name.trim() !== "" || r.amount.trim() !== "").length;
+                const groups = getDraftGroups(item.id);
+                const filledCount = groups.reduce((n, g) => n + g.rows.filter((v) => v.trim() !== "").length, 0);
                 const isCollapsed = !!collapsedItems[item.id];
                 const modalColor = getItemColor(item);
                 return (
@@ -1689,8 +1758,8 @@ export default function InsuranceApp() {
                       }}>{item.icon}</div>
                       <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
                       <span style={{ fontSize: "0.7rem", color: "#9a8a80", flexShrink: 0 }}>
-                        {filledCount > 0 || companyFilledCount > 0
-                          ? `已輸入 ${filledCount + companyFilledCount} 筆`
+                        {filledCount > 0
+                          ? `已輸入 ${filledCount} 筆${groups.length > 1 ? `／${groups.length} 間保司` : ""}`
                           : "尚未輸入"}
                       </span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a7a72" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
@@ -1699,56 +1768,139 @@ export default function InsuranceApp() {
                       </svg>
                     </div>
 
-                    {/* Rows — hidden when collapsed */}
+                    {/* 保險公司群組 — hidden when collapsed */}
                     {!isCollapsed && (
-                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {rows.map((val, idx) => (
-                          <div key={idx} style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
-                            <textarea
-                              rows={1}
-                              value={val}
-                              onChange={(e) => updateCoverageRow(item.id, idx, e.target.value)}
-                              placeholder={`保障數值 ${idx + 1}（可直接貼上多行文字）`}
-                              style={{
-                                flex: 1, minWidth: 0, padding: "8px 12px", borderRadius: "8px",
-                                border: `1.5px solid ${modalColor}`, outline: "none",
-                                fontSize: "0.85rem", color: "#3a2f28", fontFamily: "inherit",
-                                boxSizing: "border-box", resize: "vertical",
-                                maxHeight: "110px", overflowY: "auto", lineHeight: "1.5",
-                              }}
-                            />
+                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                        {groups.map((group, gi) => (
+                          <div key={group.id} style={{
+                            border: `1px dashed ${modalColor}`, borderRadius: "10px", padding: "8px",
+                            display: "flex", flexDirection: "column", gap: "6px", background: "#fffdfb",
+                          }}>
+                            {/* 保險公司名稱 */}
+                            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                              <span style={{ fontSize: "0.72rem", color: "#9a8a80", fontWeight: 600, flexShrink: 0 }}>🏢</span>
+                              <input
+                                type="text"
+                                value={group.company}
+                                onChange={(e) => updateGroupCompany(item.id, gi, e.target.value)}
+                                placeholder="保險公司名稱（可不填）"
+                                style={{
+                                  flex: 1, minWidth: 0, padding: "6px 10px", borderRadius: "8px",
+                                  border: "1px solid #e0d6cc", outline: "none", background: "white",
+                                  fontSize: "0.8rem", fontWeight: 600, color: "#3a2f28", fontFamily: "inherit", boxSizing: "border-box",
+                                }}
+                              />
+                              {groups.length > 1 && (
+                                <button
+                                  onClick={() => removeCompanyGroup(item.id, gi)}
+                                  title="移除這間保險公司（含底下所有數值）"
+                                  style={{
+                                    padding: "5px 9px", borderRadius: "8px", flexShrink: 0, border: "none",
+                                    background: "#f5e2de", color: "#a04030", cursor: "pointer",
+                                    fontSize: "0.7rem", fontWeight: 600, fontFamily: "inherit",
+                                  }}
+                                >
+                                  移除保司
+                                </button>
+                              )}
+                            </div>
+
+                            {/* 數值列：左邊拖曳把手、右邊移除 */}
+                            {group.rows.map((val, idx) => {
+                              const isDragging = rowDrag && rowDrag.itemId === item.id && rowDrag.gi === gi && rowDrag.idx === idx;
+                              return (
+                                <div
+                                  key={idx}
+                                  data-cov-row="1"
+                                  data-item={item.id}
+                                  data-gi={gi}
+                                  data-idx={idx}
+                                  style={{
+                                    display: "flex", gap: "6px", alignItems: "flex-start",
+                                    borderRadius: "8px",
+                                    background: isDragging ? "rgba(74,63,56,0.08)" : "transparent",
+                                    boxShadow: isDragging ? "0 2px 10px rgba(0,0,0,0.12)" : "none",
+                                    transition: "background 0.12s",
+                                  }}
+                                >
+                                  <div
+                                    onMouseDown={handleRowDragStart(item.id, gi, idx)}
+                                    onTouchStart={handleRowDragStart(item.id, gi, idx)}
+                                    title="按住上下拖曳，調整順序"
+                                    style={{
+                                      width: "22px", height: "34px", flexShrink: 0,
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                      cursor: isDragging ? "grabbing" : "grab", color: "#b0a090",
+                                      touchAction: "none", userSelect: "none",
+                                    }}
+                                  >
+                                    <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">
+                                      <circle cx="3" cy="3" r="1.5" /><circle cx="9" cy="3" r="1.5" />
+                                      <circle cx="3" cy="8" r="1.5" /><circle cx="9" cy="8" r="1.5" />
+                                      <circle cx="3" cy="13" r="1.5" /><circle cx="9" cy="13" r="1.5" />
+                                    </svg>
+                                  </div>
+                                  <textarea
+                                    rows={1}
+                                    value={val}
+                                    onChange={(e) => updateCoverageRow(item.id, gi, idx, e.target.value)}
+                                    placeholder={`保障數值 ${idx + 1}（可直接貼上多行文字）`}
+                                    style={{
+                                      flex: 1, minWidth: 0, padding: "8px 12px", borderRadius: "8px",
+                                      border: `1.5px solid ${modalColor}`, outline: "none",
+                                      fontSize: "0.85rem", color: "#3a2f28", fontFamily: "inherit",
+                                      boxSizing: "border-box", resize: "vertical",
+                                      maxHeight: "110px", overflowY: "auto", lineHeight: "1.5",
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => removeCoverageRow(item.id, gi, idx)}
+                                    title="移除這一列"
+                                    style={{
+                                      width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0, border: "none",
+                                      background: "#f5e2de", color: "#a04030", cursor: "pointer",
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                                      <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              );
+                            })}
                             <button
-                              onClick={() => removeCoverageRow(item.id, idx)}
-                              disabled={rows.length <= 1}
-                              title="移除這一列"
+                              onClick={() => addCoverageRow(item.id, gi)}
                               style={{
-                                width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0, border: "none",
-                                background: rows.length <= 1 ? "#f0ede8" : "#f5e2de",
-                                color: rows.length <= 1 ? "#c0b8b0" : "#a04030",
-                                cursor: rows.length <= 1 ? "not-allowed" : "pointer",
-                                display: "flex", alignItems: "center", justifyContent: "center",
+                                alignSelf: "flex-start", marginLeft: "28px",
+                                display: "flex", alignItems: "center", gap: "5px",
+                                padding: "5px 11px", borderRadius: "20px", border: `1.5px dashed ${modalColor}`,
+                                background: "transparent", color: "#5a4a3a", fontSize: "0.74rem", fontWeight: 600,
+                                cursor: "pointer", fontFamily: "inherit",
                               }}
                             >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                                <line x1="5" y1="12" x2="19" y2="12" />
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                               </svg>
+                              新增一列
                             </button>
                           </div>
                         ))}
+
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                           <button
-                            onClick={() => addCoverageRow(item.id)}
+                            onClick={() => addCompanyGroup(item.id)}
                             style={{
                               display: "flex", alignItems: "center", gap: "5px",
-                              padding: "6px 12px", borderRadius: "20px", border: `1.5px dashed ${modalColor}`,
-                              background: "transparent", color: "#5a4a3a", fontSize: "0.76rem", fontWeight: 600,
+                              padding: "6px 12px", borderRadius: "20px", border: "1.5px dashed #8a9ab0",
+                              background: "transparent", color: "#4a5a70", fontSize: "0.76rem", fontWeight: 600,
                               cursor: "pointer", fontFamily: "inherit",
                             }}
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
                               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                             </svg>
-                            新增一列
+                            新增保險公司
                           </button>
                           <button
                             onClick={() => splitRowsToLines(item.id)}
@@ -1768,79 +1920,12 @@ export default function InsuranceApp() {
                             一鍵分行
                           </button>
                         </div>
-
-                        {/* 保險公司比較 — 同一項目可分別記錄多間保司的數值，自動加總 */}
-                        <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed #ece4dc" }}>
-                          <p style={{ margin: "0 0 8px", fontSize: "0.72rem", color: "#9a8a80", fontWeight: 600 }}>
-                            保險公司比較（可加總）
-                          </p>
-                          {(companyDraft[item.id] || []).map((row) => (
-                            <div key={row.id} style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "6px" }}>
-                              <input
-                                type="text"
-                                value={row.name}
-                                onChange={(e) => updateCompanyRow(item.id, row.id, "name", e.target.value)}
-                                placeholder="保險公司名稱"
-                                style={{
-                                  flex: 1.3, minWidth: 0, padding: "7px 10px", borderRadius: "8px",
-                                  border: `1.5px solid ${modalColor}`, outline: "none",
-                                  fontSize: "0.82rem", color: "#3a2f28", fontFamily: "inherit", boxSizing: "border-box",
-                                }}
-                              />
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={row.amount}
-                                onChange={(e) => updateCompanyRow(item.id, row.id, "amount", e.target.value)}
-                                placeholder="金額（萬）"
-                                style={{
-                                  flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: "8px",
-                                  border: `1.5px solid ${modalColor}`, outline: "none",
-                                  fontSize: "0.82rem", color: "#3a2f28", fontFamily: "inherit", boxSizing: "border-box",
-                                }}
-                              />
-                              <button
-                                onClick={() => removeCompanyRow(item.id, row.id)}
-                                title="移除這間保司"
-                                style={{
-                                  width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0, border: "none",
-                                  background: "#f5e2de", color: "#a04030", cursor: "pointer",
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                }}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                                  <line x1="5" y1="12" x2="19" y2="12" />
-                                </svg>
-                              </button>
-                            </div>
-                          ))}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
-                            <button
-                              onClick={() => addCompanyRow(item.id)}
-                              style={{
-                                display: "flex", alignItems: "center", gap: "5px",
-                                padding: "6px 12px", borderRadius: "20px", border: "1.5px dashed #8a9ab0",
-                                background: "transparent", color: "#4a5a70", fontSize: "0.76rem", fontWeight: 600,
-                                cursor: "pointer", fontFamily: "inherit",
-                              }}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                              </svg>
-                              新增保險公司
-                            </button>
-                            {(companyDraft[item.id] || []).length > 0 && (
-                              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#4a3f38" }}>
-                                合計：{getCompanyDraftTotal(item.id)}萬
-                              </span>
-                            )}
-                          </div>
-                        </div>
                       </div>
                     )}
                   </div>
                 );
               })}
+
             </div>
 
             {/* Modal footer */}
