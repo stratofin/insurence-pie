@@ -249,6 +249,8 @@ export default function InsuranceApp() {
   const BADGE_DEFAULT = { w: 120, h: 50 };
   const [badgeSizes, setBadgeSizes] = useState({}); // { [itemId]: { w, h } }
   const getBadgeSize = (id) => badgeSizes[id] || BADGE_DEFAULT;
+  const getBadgeSizeRef = useRef(getBadgeSize);
+  getBadgeSizeRef.current = getBadgeSize;
   const badgeRefs = useRef({});
   const badgeObservers = useRef({});
   const badgeRefCallbacks = useRef({}); // 每個 id 只建立一次 ref callback，避免每次 render 都重新 attach/detach
@@ -294,11 +296,36 @@ export default function InsuranceApp() {
     const svgP = pt.matrixTransform(ctm.inverse());
     return { x: svgP.x, y: svgP.y };
   };
-  // 拖曳邊界：用「離圓心的距離」限制文字框中心點——
-  // 太近圓心會被推開（不能拖進圓餅圖裡面蓋住圖），太遠會被拉回（不會拖出頁面造成座標失控、
-  // 網站崩潰變白畫面），但中間留了很大的可用範圍，讓桌機版左右留白空間也能拖得到
-  const BADGE_MIN_DIST = 190;  // 略大於圓餅圖外圈半徑（outerR=160），避免蓋住圖
-  const BADGE_MAX_DIST = 4000; // 放得很大，桌機寬螢幕左右留白都能拖到；只防止真正無限大的座標值
+  // 拖曳邊界：
+  // 1) 整個文字框（不只中心點）都不能碰到圓餅圖外圍的灰色圓圈——碰到就沿著「圓心→文字框」方向往外推
+  // 2) 離圓心太遠會被拉回，避免座標失控造成網站白畫面；範圍放很大，桌機左右留白都拖得到
+  const BADGE_RING_R = 178;    // 外圍灰色圓圈半徑（outerR + 14 = 174）再留一點空隙
+  const BADGE_MAX_DIST = 4000;
+  // 文字框（中心 x,y、寬 w、高 h）離圓心最近的距離
+  const badgeNearestDist = (x, y, w, h) => {
+    const ex = Math.max(Math.abs(x - cx) - w / 2, 0);
+    const ey = Math.max(Math.abs(y - cy) - h / 2, 0);
+    return Math.sqrt(ex * ex + ey * ey);
+  };
+  // 把文字框中心點推到「整個框都在灰色圓圈外」且不超過最大距離的位置
+  const constrainBadgeCenter = (x, y, w, h) => {
+    let vx = x - cx, vy = y - cy;
+    if (!isFinite(vx) || !isFinite(vy)) { vx = 0; vy = -1; }
+    let dist = Math.sqrt(vx * vx + vy * vy);
+    if (dist < 1e-6) { vx = 0; vy = -1; dist = 1e-6; }
+    const ux = vx / dist, uy = vy / dist;
+    if (dist > BADGE_MAX_DIST) dist = BADGE_MAX_DIST;
+    let px = cx + ux * dist, py = cy + uy * dist;
+    if (badgeNearestDist(px, py, w, h) >= BADGE_RING_R) return { x: px, y: py };
+    // 二分搜尋：沿同一方向往外找最近、剛好不碰到圓圈的位置
+    let lo = dist, hi = dist + w + h + BADGE_RING_R;
+    for (let k = 0; k < 30; k++) {
+      const mid = (lo + hi) / 2;
+      if (badgeNearestDist(cx + ux * mid, cy + uy * mid, w, h) >= BADGE_RING_R) hi = mid; else lo = mid;
+    }
+    return { x: cx + ux * hi, y: cy + uy * hi };
+  };
+  const badgeBaseAnchorsRef = useRef({}); // 畫面上每個文字框的預設錨點（render 時記錄）
   const handleBadgeDragStart = (id, baseAnchor) => (evt) => {
     evt.preventDefault();
     evt.stopPropagation();
@@ -311,19 +338,12 @@ export default function InsuranceApp() {
       moveEvt.preventDefault();
       const curPt = svgPointFromEvent(moveEvt);
       const { startOffset, startSvgPt, baseAnchor, id } = dragStateRef.current;
+      const curSize = getBadgeSizeRef.current(id);
       const rawX = baseAnchor.x + startOffset.dx + (curPt.x - startSvgPt.x);
       const rawY = baseAnchor.y + startOffset.dy + (curPt.y - startSvgPt.y);
-      let vecX = rawX - cx;
-      let vecY = rawY - cy;
-      if (!isFinite(vecX) || !isFinite(vecY)) { vecX = 0; vecY = BADGE_MIN_DIST; }
-      let dist = Math.sqrt(vecX * vecX + vecY * vecY);
-      if (dist < 1e-6) { vecX = 0; vecY = 1; dist = 1; }
-      const clampedDist = Math.min(Math.max(dist, BADGE_MIN_DIST), BADGE_MAX_DIST);
-      const ratio = clampedDist / dist;
-      const clampedX = cx + vecX * ratio;
-      const clampedY = cy + vecY * ratio;
-      const dx = clampedX - baseAnchor.x;
-      const dy = clampedY - baseAnchor.y;
+      const c = constrainBadgeCenter(rawX, rawY, curSize.w, curSize.h);
+      const dx = c.x - baseAnchor.x;
+      const dy = c.y - baseAnchor.y;
       setBadgeOffsets((prev) => ({ ...prev, [id]: { dx, dy } }));
     };
     const onUp = () => {
@@ -338,6 +358,25 @@ export default function InsuranceApp() {
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onUp);
   };
+  // 文字框被拉大（右下角調整長寬）或剛出現在預設位置時，若碰到外圍灰色圓圈，自動往外推開
+  useEffect(() => {
+    if (dragStateRef.current) return;
+    const anchors = badgeBaseAnchorsRef.current;
+    const updates = {};
+    Object.keys(anchors).forEach((id) => {
+      const base = anchors[id];
+      const off = badgeOffsets[id] || { dx: 0, dy: 0 };
+      const size = getBadgeSize(id);
+      const x = base.x + off.dx, y = base.y + off.dy;
+      const c = constrainBadgeCenter(x, y, size.w, size.h);
+      if (Math.abs(c.x - x) > 0.5 || Math.abs(c.y - y) > 0.5) {
+        updates[id] = { dx: c.x - base.x, dy: c.y - base.y };
+      }
+    });
+    if (Object.keys(updates).length > 0) {
+      setBadgeOffsets((prev) => ({ ...prev, ...updates }));
+    }
+  });
   const [useAuthority, setUseAuthority] = useState(false);
   const [selectedSubType, setSelectedSubType] = useState(null); // 目前選中的子分類 id
   const [subDescriptions, setSubDescriptions] = useState(defaultSubDescriptions);
@@ -815,6 +854,7 @@ export default function InsuranceApp() {
               const isPrintVer = idSuffix !== "";
               const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
               const baseAnchor = getLabelPos(cx, cy, outerR + 50, startAngle, endAngle);
+              if (idSuffix === "") badgeBaseAnchorsRef.current[item.id] = baseAnchor;
               const offset = badgeOffsets[item.id] || { dx: 0, dy: 0 };
               const anchorPos = { x: baseAnchor.x + offset.dx, y: baseAnchor.y + offset.dy };
               const values = getDisplayLines(item.id);
