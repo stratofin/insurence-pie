@@ -1295,8 +1295,13 @@ export default function InsuranceApp() {
 
   // 四個按鈕功能（列印、存檔/讀取、尺寸調整、電腦/手機切換）統一用 2 個一排的網格排列，
   // 電腦版與手機版共用同一份排版；同時考慮未來摺疊手機展開後畫面變大，仍可自由切換顯示模式
+  // 電腦版，或寬度 ≥ 768px 的平板（即使是手機版排版）：右側按鈕排成一排
+  const rightButtonsOneRow = !isMobile || windowWidth >= 768;
   const rightButtonGroup = (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 44px)", gap: "8px" }}>
+    // 窄手機：2 欄網格（節省寬度）；電腦／平板：全部排成一排（清出下方留白給圓餅圖）
+    <div style={!rightButtonsOneRow
+      ? { display: "grid", gridTemplateColumns: "repeat(2, 44px)", gap: "8px" }
+      : { display: "flex", flexDirection: "row", alignItems: "center", gap: "8px", flexShrink: 0 }}>
       <input
         ref={loadFileInputRef}
         type="file"
@@ -1371,8 +1376,8 @@ export default function InsuranceApp() {
 
       {/* 上一步／下一步（復原／重做） */}
       <div style={{
-        gridColumn: "1 / span 2",
-        width: "100%", height: "40px", borderRadius: "10px",
+        gridColumn: !rightButtonsOneRow ? "1 / span 2" : "auto",
+        width: !rightButtonsOneRow ? "100%" : "88px", height: !rightButtonsOneRow ? "40px" : "44px", borderRadius: "10px",
         background: "#ede8e2", overflow: "hidden",
         display: "flex", flexDirection: "row", flexShrink: 0,
       }}>
