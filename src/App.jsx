@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from "react";
 const COVERAGE_STORAGE_KEY = "insuranceCoverageValues";
 const CHART_SETTINGS_STORAGE_KEY = "insuranceChartSettings";
 const COMPANY_STORAGE_KEY = "insuranceCompanyValues";
+const CUSTOM_TYPES_STORAGE_KEY = "insuranceCustomTypes";
 
 const centerItem = {
   id: "center",
@@ -393,6 +394,15 @@ export default function InsuranceApp() {
   const [coverageFlash, setCoverageFlash] = useState(null); // "saved" | "loaded" | null
   // 顯示方式："separate" 依保險公司分開列出；"merged" 全部整合成一份清單
   const [coverageViewMode, setCoverageViewMode] = useState("separate");
+  // 自訂保障類型（不屬於預設類型的保單）：[{ id: "custom_xxx", name }]
+  const [customTypes, setCustomTypes] = useState([]);
+  const [customTypesDraft, setCustomTypesDraft] = useState([]);
+  const CUSTOM_COLOR = "#B8AFA6";
+  const newCustomTypeId = () => `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const normalizeCustomTypes = (arr) =>
+    (Array.isArray(arr) ? arr : [])
+      .filter((c) => c && typeof c === "object" && typeof c.id === "string" && c.id.startsWith("custom_"))
+      .map((c) => ({ id: c.id, name: String(c.name || "").trim() || "自訂保障" }));
 
   const groupSeqRef = useRef(0);
   const newGroupId = () => `g${Date.now()}_${groupSeqRef.current++}`;
@@ -400,7 +410,9 @@ export default function InsuranceApp() {
   // 相容舊資料：字串、字串陣列、舊版「保險公司＋金額」都能讀進新的群組結構
   const normalizeCoverageValues = (data, legacyCompanies = null) => {
     const out = {};
-    insuranceData.forEach((item) => {
+    const customIds = Object.keys(data || {}).filter((k) => k.startsWith("custom_"));
+    [...insuranceData.map((it) => it.id), ...customIds].forEach((itemId) => {
+      const item = { id: itemId };
       const v = data?.[item.id];
       let groups = [];
       if (typeof v === "string" && v.trim() !== "") {
@@ -441,6 +453,8 @@ export default function InsuranceApp() {
     try {
       const saved = localStorage.getItem(COVERAGE_STORAGE_KEY);
       const savedCompanies = localStorage.getItem(COMPANY_STORAGE_KEY);
+      const savedCustom = localStorage.getItem(CUSTOM_TYPES_STORAGE_KEY);
+      if (savedCustom) setCustomTypes(normalizeCustomTypes(JSON.parse(savedCustom)));
       if (saved || savedCompanies) {
         setCoverageValues(normalizeCoverageValues(
           saved ? JSON.parse(saved) : {},
@@ -468,7 +482,7 @@ export default function InsuranceApp() {
 
   // ---------- 上一步／下一步：記錄保障數值、保險公司數值、圖形顏色與填色比率的變更歷史 ----------
   const [historyIndex, setHistoryIndex] = useState(0);
-  const historyStackRef = useRef([{ coverageValues: {}, companyValues: {}, colorOverrides: {}, fillRatios: {} }]);
+  const historyStackRef = useRef([{ coverageValues: {}, companyValues: {}, colorOverrides: {}, fillRatios: {}, customTypes: [] }]);
   const historyIndexRef = useRef(0);
   const isRestoringHistoryRef = useRef(false);
 
@@ -479,6 +493,7 @@ export default function InsuranceApp() {
       companyValues: JSON.parse(JSON.stringify(companyValues)),
       colorOverrides: JSON.parse(JSON.stringify(colorOverrides)),
       fillRatios: JSON.parse(JSON.stringify(fillRatios)),
+      customTypes: JSON.parse(JSON.stringify(customTypes)),
     };
     // 若曾經「上一步」過，此時再變更會截斷後面的「下一步」紀錄
     const stack = historyStackRef.current.slice(0, historyIndexRef.current + 1);
@@ -486,7 +501,7 @@ export default function InsuranceApp() {
     historyStackRef.current = stack;
     historyIndexRef.current = stack.length - 1;
     setHistoryIndex(historyIndexRef.current);
-  }, [coverageValues, companyValues, colorOverrides, fillRatios]);
+  }, [coverageValues, companyValues, colorOverrides, fillRatios, customTypes]);
 
   const canUndoHistory = historyIndex > 0;
   const canRedoHistory = historyIndex < historyStackRef.current.length - 1;
@@ -497,6 +512,7 @@ export default function InsuranceApp() {
     setCompanyValues(snapshot.companyValues);
     setColorOverrides(snapshot.colorOverrides);
     setFillRatios(snapshot.fillRatios);
+    setCustomTypes(snapshot.customTypes || []);
   };
   const handleHistoryUndo = () => {
     if (!canUndoHistory) return;
@@ -521,6 +537,15 @@ export default function InsuranceApp() {
         ? existing.map((g) => ({ id: g.id, company: g.company, rows: g.rows.length ? [...g.rows] : [""] }))
         : [{ id: newGroupId(), company: "", rows: [""] }];
     });
+    // 自訂類型：沿用已存在的；若一個都沒有，預設先放一個空白的自訂欄位
+    const cTypes = customTypes.length ? customTypes.map((c) => ({ ...c })) : [{ id: newCustomTypeId(), name: "" }];
+    cTypes.forEach((c) => {
+      const existing = coverageValues[c.id];
+      draft[c.id] = existing && existing.length
+        ? existing.map((g) => ({ id: g.id, company: g.company, rows: g.rows.length ? [...g.rows] : [""] }))
+        : [{ id: newGroupId(), company: "", rows: [""] }];
+    });
+    setCustomTypesDraft(cTypes);
     setCoverageDraft(draft);
     setCollapsedItems({});
     setShowCoverageModal(true);
@@ -563,6 +588,17 @@ export default function InsuranceApp() {
       groups.splice(gi, 1);
       return groups;
     });
+  const addCustomType = () => {
+    const id = newCustomTypeId();
+    setCustomTypesDraft((prev) => [...prev, { id, name: "" }]);
+    setCoverageDraft((prev) => ({ ...prev, [id]: [{ id: newGroupId(), company: "", rows: [""] }] }));
+  };
+  const updateCustomTypeName = (id, name) =>
+    setCustomTypesDraft((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+  const removeCustomType = (id) => {
+    setCustomTypesDraft((prev) => prev.filter((c) => c.id !== id));
+    setCoverageDraft((prev) => { const next = { ...prev }; delete next[id]; return next; });
+  };
   const toggleCollapse = (id) => setCollapsedItems((prev) => ({ ...prev, [id]: !prev[id] }));
 
   // 一鍵分行：把每一列裡貼上的多行文字（換行符號）拆成獨立的列（各保險公司分別處理）
@@ -634,6 +670,14 @@ export default function InsuranceApp() {
         .filter((g) => g.rows.length > 0 || g.company !== "");
       if (groups.length > 0) cleaned[id] = groups;
     });
+    // 自訂類型：有名稱或有數值才保留；沒填名稱但有數值時給預設名稱
+    const keptCustom = customTypesDraft
+      .map((c) => ({ id: c.id, name: (c.name || "").trim() }))
+      .filter((c) => c.name !== "" || cleaned[c.id])
+      .map((c) => ({ ...c, name: c.name || "自訂保障" }));
+    const keptIds = new Set(keptCustom.map((c) => c.id));
+    Object.keys(cleaned).forEach((id) => { if (id.startsWith("custom_") && !keptIds.has(id)) delete cleaned[id]; });
+    setCustomTypes(keptCustom);
     setCoverageValues(cleaned);
     setCompanyValues({});
     setShowCoverageModal(false);
@@ -641,6 +685,10 @@ export default function InsuranceApp() {
   const handleCoverageClear = () => {
     const draft = {};
     insuranceData.forEach((item) => { draft[item.id] = [{ id: newGroupId(), company: "", rows: [""] }]; });
+    const freshCustom = { id: newCustomTypeId(), name: "" };
+    draft[freshCustom.id] = [{ id: newGroupId(), company: "", rows: [""] }];
+    setCustomTypesDraft([freshCustom]);
+    setCustomTypes([]);
     setCoverageDraft(draft);
     setCoverageValues({});
     setCompanyValues({});
@@ -654,7 +702,7 @@ export default function InsuranceApp() {
     app: "insurance-pie",
     version: 1,
     savedAt: new Date().toISOString(),
-    coverageValues, coverageViewMode, colorOverrides, fillRatios, badgeOffsets, badgeSizes,
+    coverageValues, coverageViewMode, customTypes, colorOverrides, fillRatios, badgeOffsets, badgeSizes,
   });
   const defaultSaveFileName = () => {
     const d = new Date();
@@ -668,6 +716,7 @@ export default function InsuranceApp() {
     try {
       localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(coverageValues));
       localStorage.removeItem(COMPANY_STORAGE_KEY); // 舊版保司資料已整合進保障數值
+      localStorage.setItem(CUSTOM_TYPES_STORAGE_KEY, JSON.stringify(customTypes));
     } catch (e) { /* ignore */ }
     try {
       if (window.showSaveFilePicker) {
@@ -698,6 +747,7 @@ export default function InsuranceApp() {
 
   const applyLoadedData = (data) => {
     if (!data || typeof data !== "object") throw new Error("bad file");
+    setCustomTypes(normalizeCustomTypes(data.customTypes));
     setCoverageValues(normalizeCoverageValues(data.coverageValues || {}, data.companyValues || null));
     setCompanyValues({});
     if (data.coverageViewMode === "merged" || data.coverageViewMode === "separate") setCoverageViewMode(data.coverageViewMode);
@@ -770,6 +820,103 @@ export default function InsuranceApp() {
   // ---------- SVG Chart ----------
   // idSuffix 讓同一份圖表可以在畫面與列印版各渲染一份，避免 SVG id 衝突
   // forcedWidthPx 讓列印版固定尺寸，不受畫面縮放/手機版影響
+  // 保障數值文字框（圓餅圖各類型與自訂類型共用）：左上把手可拖曳移動、右下角可拖拉調整長寬
+  // edgePos 有值時會畫一條牽引線連回圓餅圖區塊；title 有值時在第一行顯示粗體標題（自訂類型名稱）
+  const renderCoverageBadge = ({ id, idSuffix, color, baseAnchor, edgePos = null, values, title = null }) => {
+    const isPrintVer = idSuffix !== "";
+    if (!isPrintVer) badgeBaseAnchorsRef.current[id] = baseAnchor;
+    const offset = badgeOffsets[id] || { dx: 0, dy: 0 };
+    const anchorPos = { x: baseAnchor.x + offset.dx, y: baseAnchor.y + offset.dy };
+    const size = getBadgeSize(id);
+    // key 隨內容變化 — 重新輸入/編輯時強制重新掛載，避免 foreignObject 殘影
+    return (
+      <g key={`badge-${id}-${title || ""}-${values.join("§")}`}>
+        {edgePos && (
+          <>
+            <line x1={edgePos.x} y1={edgePos.y} x2={anchorPos.x} y2={anchorPos.y} stroke={color} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
+            <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={color} style={{ pointerEvents: "none" }} />
+          </>
+        )}
+        <rect
+          x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
+          width={size.w} height={size.h} rx="8"
+          fill="rgba(255,255,255,0.97)" stroke={color} strokeWidth="1.2"
+          style={{ pointerEvents: "none" }}
+        />
+        <foreignObject
+          x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
+          width={size.w} height={size.h}
+          style={{ overflow: "visible" }}
+        >
+          <div
+            xmlns="http://www.w3.org/1999/xhtml"
+            style={{
+              position: "relative",
+              width: `${size.w}px`, height: `${size.h}px`,
+              minWidth: "56px",
+              boxSizing: "border-box",
+              display: "flex", flexDirection: "column",
+            }}
+          >
+            {!isPrintVer && (
+              <div
+                onMouseDown={handleBadgeDragStart(id, baseAnchor)}
+                onTouchStart={handleBadgeDragStart(id, baseAnchor)}
+                title="按住拖曳移動文字框"
+                style={{
+                  flexShrink: 0,
+                  width: "100%", height: `${BADGE_DRAGBAR_H}px`,
+                  cursor: "grab",
+                  pointerEvents: "auto",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "3px",
+                  background: "rgba(0,0,0,0.06)",
+                  borderTopLeftRadius: "7px", borderTopRightRadius: "7px",
+                  touchAction: "none",
+                }}
+              >
+                {[0, 1, 2, 3].map((k) => (
+                  <span key={k} style={{ width: "3px", height: "3px", borderRadius: "50%", background: color, opacity: 0.85 }} />
+                ))}
+              </div>
+            )}
+            <div
+              ref={!isPrintVer ? getBadgeRefCallback(id) : undefined}
+              style={{
+                flexShrink: 0, flexGrow: 0,
+                width: "100%",
+                height: isPrintVer ? "auto" : `${Math.max(18, size.h - BADGE_DRAGBAR_H)}px`,
+                minWidth: "56px", minHeight: "18px",
+                maxWidth: "480px", maxHeight: "600px",
+                boxSizing: "border-box", padding: "5px 8px",
+                resize: isPrintVer ? "none" : "both",
+                overflow: isPrintVer ? "visible" : "auto",
+                cursor: isPrintVer ? "default" : "nwse-resize",
+                fontSize: "10.5px", fontWeight: 700, color: "#4a3020",
+                fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
+                lineHeight: "14px", textAlign: "left",
+                wordBreak: "break-word", whiteSpace: "normal",
+                background: "transparent",
+              }}
+            >
+              {title && (
+                <div style={{ fontSize: "11.5px", fontWeight: 800, color: "#2e2520", marginBottom: "2px" }}>📝 {title}</div>
+              )}
+              {values.map((v, idx) => (
+                <div key={idx}>{v}</div>
+              ))}
+            </div>
+          </div>
+        </foreignObject>
+      </g>
+    );
+  };
+
+  // 自訂類型的文字框預設位置：圓餅圖正下方，多個時左右並排
+  const getCustomBadgeAnchor = (index, total) => ({
+    x: cx + (index - (total - 1) / 2) * 140,
+    y: cy + outerR + 95,
+  });
+
   const renderChart = (idSuffix = "", forcedWidthPx = null) => (
     <svg
       ref={idSuffix === "" ? svgRef : undefined}
@@ -895,92 +1042,14 @@ export default function InsuranceApp() {
             </text>
 
             {/* 保障數值標籤 — 牽引線連回所屬區塊；左上角可拖曳移動位置，右下角可拖拉調整長寬 */}
-            {getDisplayLines(item.id).length > 0 && (() => {
-              const isPrintVer = idSuffix !== "";
-              const edgePos = getLabelPos(cx, cy, outerR + 2, startAngle, endAngle);
-              const baseAnchor = getLabelPos(cx, cy, outerR + 50, startAngle, endAngle);
-              if (idSuffix === "") badgeBaseAnchorsRef.current[item.id] = baseAnchor;
-              const offset = badgeOffsets[item.id] || { dx: 0, dy: 0 };
-              const anchorPos = { x: baseAnchor.x + offset.dx, y: baseAnchor.y + offset.dy };
-              const values = getDisplayLines(item.id);
-              const size = getBadgeSize(item.id);
-              // key 隨數值內容變化 — 每次重新輸入/編輯保障數值時強制整個標籤重新掛載，
-              // 避免瀏覽器在 foreignObject 動態更新時殘留舊的圖形（俗稱「殘影」）造成看起來像兩個文字框
-              return (
-                <g key={`badge-${item.id}-${values.join("§")}`}>
-                  <line x1={edgePos.x} y1={edgePos.y} x2={anchorPos.x} y2={anchorPos.y} stroke={segColor} strokeWidth="1.2" style={{ pointerEvents: "none" }} />
-                  <circle cx={edgePos.x} cy={edgePos.y} r="2.4" fill={segColor} style={{ pointerEvents: "none" }} />
-                  <rect
-                    x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
-                    width={size.w} height={size.h} rx="8"
-                    fill="rgba(255,255,255,0.97)" stroke={segColor} strokeWidth="1.2"
-                    style={{ pointerEvents: "none" }}
-                  />
-                  <foreignObject
-                    x={anchorPos.x - size.w / 2} y={anchorPos.y - size.h / 2}
-                    width={size.w} height={size.h}
-                    style={{ overflow: "visible" }}
-                  >
-                    <div
-                      xmlns="http://www.w3.org/1999/xhtml"
-                      style={{
-                        position: "relative",
-                        width: `${size.w}px`, height: `${size.h}px`,
-                        minWidth: "56px",
-                        boxSizing: "border-box",
-                        display: "flex", flexDirection: "column",
-                      }}
-                    >
-                      {!isPrintVer && (
-                        <div
-                          onMouseDown={handleBadgeDragStart(item.id, baseAnchor)}
-                          onTouchStart={handleBadgeDragStart(item.id, baseAnchor)}
-                          title="按住拖曳移動文字框"
-                          style={{
-                            flexShrink: 0,
-                            width: "100%", height: `${BADGE_DRAGBAR_H}px`,
-                            cursor: "grab",
-                            pointerEvents: "auto",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "3px",
-                            background: "rgba(0,0,0,0.06)",
-                            borderTopLeftRadius: "7px", borderTopRightRadius: "7px",
-                            touchAction: "none",
-                          }}
-                        >
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
-                          <span style={{ width: "3px", height: "3px", borderRadius: "50%", background: segColor, opacity: 0.85 }} />
-                        </div>
-                      )}
-                      <div
-                        ref={!isPrintVer ? getBadgeRefCallback(item.id) : undefined}
-                        style={{
-                          flexShrink: 0, flexGrow: 0,
-                          width: "100%",
-                          height: isPrintVer ? "auto" : `${Math.max(18, size.h - BADGE_DRAGBAR_H)}px`,
-                          minWidth: "56px", minHeight: "18px",
-                          maxWidth: "480px", maxHeight: "600px",
-                          boxSizing: "border-box", padding: "5px 8px",
-                          resize: isPrintVer ? "none" : "both",
-                          overflow: isPrintVer ? "visible" : "auto",
-                          cursor: isPrintVer ? "default" : "nwse-resize",
-                          fontSize: "10.5px", fontWeight: 700, color: "#4a3020",
-                          fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif",
-                          lineHeight: "14px", textAlign: "center",
-                          wordBreak: "break-word", whiteSpace: "normal",
-                          background: "transparent",
-                        }}
-                      >
-                        {values.map((v, idx) => (
-                          <div key={idx}>{v}</div>
-                        ))}
-                      </div>
-                    </div>
-                  </foreignObject>
-                </g>
-              );
-            })()}
+            {getDisplayLines(item.id).length > 0 && renderCoverageBadge({
+              id: item.id,
+              idSuffix,
+              color: segColor,
+              baseAnchor: getLabelPos(cx, cy, outerR + 50, startAngle, endAngle),
+              edgePos: getLabelPos(cx, cy, outerR + 2, startAngle, endAngle),
+              values: getDisplayLines(item.id),
+            })}
           </g>
         );
       })}
@@ -1031,6 +1100,19 @@ export default function InsuranceApp() {
         onMouseEnter={() => setCenterHovered(true)}
         onMouseLeave={() => setCenterHovered(false)}
       />
+
+      {/* 自訂保障類型的文字框 — 和其他類型一樣可拖曳移動、調整大小（沒有對應的圓餅圖區塊，所以不畫牽引線） */}
+      {(() => {
+        const shown = customTypes.filter((c) => getDisplayLines(c.id).length > 0);
+        return shown.map((c, k) => renderCoverageBadge({
+          id: c.id,
+          idSuffix,
+          color: CUSTOM_COLOR,
+          baseAnchor: getCustomBadgeAnchor(k, shown.length),
+          values: getDisplayLines(c.id),
+          title: c.name,
+        }));
+      })()}
     </svg>
   );
 
@@ -1737,7 +1819,10 @@ export default function InsuranceApp() {
                 </div>
               </div>
 
-              {insuranceData.map((item) => {
+              {[
+                ...insuranceData,
+                ...customTypesDraft.map((c) => ({ id: c.id, name: c.name, icon: "📝", color: CUSTOM_COLOR, isCustom: true })),
+              ].map((item) => {
                 const groups = getDraftGroups(item.id);
                 const filledCount = groups.reduce((n, g) => n + g.rows.filter((v) => v.trim() !== "").length, 0);
                 const isCollapsed = !!collapsedItems[item.id];
@@ -1756,7 +1841,35 @@ export default function InsuranceApp() {
                         width: "30px", height: "30px", borderRadius: "8px", flexShrink: 0,
                         background: modalColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px",
                       }}>{item.icon}</div>
-                      <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
+                      {item.isCustom ? (
+                        <input
+                          type="text"
+                          value={item.name}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => updateCustomTypeName(item.id, e.target.value)}
+                          placeholder="自訂保障類型名稱（例如：長期看護、牙科）"
+                          style={{
+                            flex: 1, minWidth: 0, padding: "6px 10px", borderRadius: "8px",
+                            border: "1.5px solid #d8cfc6", outline: "none", background: "white",
+                            fontSize: "0.83rem", fontWeight: 600, color: "#3a2f28", fontFamily: "inherit", boxSizing: "border-box",
+                          }}
+                        />
+                      ) : (
+                        <span style={{ flex: 1, fontSize: "0.85rem", fontWeight: 600, color: "#4a3f38" }}>{item.name}</span>
+                      )}
+                      {item.isCustom && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeCustomType(item.id); }}
+                          title="刪除這個自訂類型"
+                          style={{
+                            padding: "4px 8px", borderRadius: "8px", flexShrink: 0, border: "none",
+                            background: "#f5e2de", color: "#a04030", cursor: "pointer",
+                            fontSize: "0.7rem", fontWeight: 600, fontFamily: "inherit",
+                          }}
+                        >
+                          刪除
+                        </button>
+                      )}
                       <span style={{ fontSize: "0.7rem", color: "#9a8a80", flexShrink: 0 }}>
                         {filledCount > 0
                           ? `已輸入 ${filledCount} 筆${groups.length > 1 ? `／${groups.length} 間保司` : ""}`
@@ -1926,6 +2039,23 @@ export default function InsuranceApp() {
                 );
               })}
 
+
+              {/* 新增自訂保障類型 */}
+              <button
+                onClick={addCustomType}
+                style={{
+                  width: "100%", padding: "10px", borderRadius: "12px",
+                  border: "1.5px dashed #b8afa6", background: "#faf8f5",
+                  color: "#5a4a3a", fontSize: "0.8rem", fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                新增自訂保障類型
+              </button>
             </div>
 
             {/* Modal footer */}
@@ -2152,6 +2282,12 @@ export default function InsuranceApp() {
                 </tr>
               );
             })}
+            {customTypes.filter((c) => getDisplayLines(c.id).length > 0).map((c) => (
+              <tr key={c.id}>
+                <td style={{ padding: "8px 10px", borderBottom: "1px solid #ddd3c8", fontWeight: 600 }}>{c.name}（自訂）</td>
+                <td style={{ padding: "8px 10px", borderBottom: "1px solid #ddd3c8" }}>{getDisplayLines(c.id).join("、")}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
