@@ -917,15 +917,46 @@ export default function InsuranceApp() {
     y: cy + outerR + 95,
   });
 
+  // 列印用：計算圓餅圖＋所有文字框實際佔用的範圍，當作列印版的 viewBox，讓內容放大填滿整張紙
+  const getPrintViewBox = () => {
+    const ringR = outerR + 16;
+    let minX = cx - ringR, maxX = cx + ringR, minY = cy - ringR, maxY = cy + ringR;
+    const ids = [
+      ...insuranceData.map((it) => it.id),
+      ...customTypes.map((c) => c.id),
+    ].filter((id) => getDisplayLines(id).length > 0);
+    ids.forEach((id) => {
+      const base = badgeBaseAnchorsRef.current[id];
+      if (!base) return;
+      const off = badgeOffsets[id] || { dx: 0, dy: 0 };
+      const size = getBadgeSize(id);
+      // 列印時文字框高度會依內容自動長高，用「行數 × 行高」估算，取較大者
+      const lines = getDisplayLines(id).length + (id.toString().startsWith("custom_") ? 1 : 0);
+      const h = Math.max(size.h, lines * 14 + 12);
+      const x = base.x + off.dx, y = base.y + off.dy;
+      minX = Math.min(minX, x - size.w / 2);
+      maxX = Math.max(maxX, x + size.w / 2);
+      minY = Math.min(minY, y - size.h / 2);
+      maxY = Math.max(maxY, y - size.h / 2 + h);
+    });
+    const pad = 10;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    if (![minX, minY, maxX, maxY].every(isFinite)) return "-100 -100 600 600";
+    return `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
+  };
+
   const renderChart = (idSuffix = "", forcedWidthPx = null) => (
     <svg
       ref={idSuffix === "" ? svgRef : undefined}
-      viewBox="-100 -100 600 600"
+      viewBox={idSuffix === "-print" ? getPrintViewBox() : "-100 -100 600 600"}
+      className={idSuffix === "-print" ? "print-chart" : undefined}
       style={{
         // 手機版寬度公式：viewBox 加大後，圓餅圖本身只佔 SVG 畫布約 58%，
         // 這裡把 vw 係數同步放大（92→138），讓圓餅圖實際顯示大小恢復成加大 viewBox 之前的閱讀尺寸；
         // 同時乘上 chartScale，讓手機版的放大/縮小按鈕也能生效
-        width: forcedWidthPx
+        width: forcedWidthPx === "fill"
+          ? "100%"
+          : forcedWidthPx
           ? `${forcedWidthPx}px`
           : (isMobile
               ? `min(${Math.round(138 * chartScale)}vw, ${Math.round(570 * chartScale)}px)`
@@ -1117,7 +1148,7 @@ export default function InsuranceApp() {
   );
 
   const chart = renderChart("");
-  const chartForPrint = renderChart("-print", 456);
+  const chartForPrint = renderChart("-print", "fill");
 
   // ---------- Detail Panel ----------
   // 統一版面：圖表在上、說明在下，說明區永遠吃滿該欄可用寬度；內容參考寬度＝實際可用寬度／縮放比例
@@ -2241,28 +2272,31 @@ export default function InsuranceApp() {
 
       {/* 輸出 PDF 用列印版面 — 畫面上隱藏，僅在「列印／另存為 PDF」時顯示 */}
       <div className="print-summary">
-        <h1 style={{ fontSize: "20px", margin: "0 0 4px", color: "#2a2018", fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif" }}>
-          保險保障數值總覽
-        </h1>
-        <p style={{ fontSize: "12px", color: "#6a5a50", margin: "0 0 16px" }}>
-          製表日期：{new Date().toLocaleDateString("zh-TW")}
-        </p>
+        {/* 標題、日期、未設定項目放同一行，把版面留給圓餅圖 */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: "14px", flexWrap: "wrap", margin: "0 0 4px" }}>
+          <h1 style={{ fontSize: "18px", margin: 0, color: "#2a2018", fontFamily: "'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif" }}>
+            保險保障數值總覽
+          </h1>
+          <span style={{ fontSize: "11px", color: "#6a5a50" }}>
+            製表日期：{new Date().toLocaleDateString("zh-TW")}
+          </span>
+          {insuranceData.some((item) => getDisplayLines(item.id).length === 0) && (
+            <span style={{ fontSize: "11px", color: "#a04030", fontWeight: 600, marginLeft: "auto" }}>
+              尚未設定保障數值：
+              {insuranceData
+                .filter((item) => getDisplayLines(item.id).length === 0)
+                .map((item) => item.name)
+                .join("、")}
+            </span>
+          )}
+        </div>
 
-        {/* 圓餅圖 — 一眼看出哪些保障已補齊、哪些還缺 */}
-        <div style={{ display: "flex", justifyContent: "center", margin: "0 0 18px" }}>
+        {/* 圓餅圖＋文字框 — 列印時放大填滿整頁 */}
+        <div className="print-chart-wrap" style={{ display: "flex", justifyContent: "center", margin: "0 0 18px" }}>
           {chartForPrint}
         </div>
 
-        {insuranceData.some((item) => getDisplayLines(item.id).length === 0) && (
-          <p style={{ fontSize: "12px", color: "#a04030", fontWeight: 600, margin: "0 0 16px", textAlign: "center" }}>
-            尚未設定保障數值：
-            {insuranceData
-              .filter((item) => getDisplayLines(item.id).length === 0)
-              .map((item) => item.name)
-              .join("、")}
-          </p>
-        )}
-
+        <div className="print-after-chart" />
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
             <tr>
@@ -2301,13 +2335,20 @@ export default function InsuranceApp() {
         @media print {
           body * { visibility: hidden; }
           .print-summary, .print-summary * { visibility: visible; }
+          @page { size: A4 landscape; margin: 8mm; }
           .print-summary {
             display: block !important;
             position: absolute; top: 0; left: 0; width: 100%;
-            padding: 24px; box-sizing: border-box;
+            padding: 0; box-sizing: border-box;
             -webkit-print-color-adjust: exact; print-color-adjust: exact;
           }
-          .print-summary svg { break-inside: avoid; page-break-inside: avoid; }
+          /* 圓餅圖＋文字框放大到整頁：寬度填滿，高度不超過一頁（扣掉標題列） */
+          .print-summary .print-chart {
+            width: 100% !important; height: 180mm !important; max-height: 180mm;
+            break-inside: avoid; page-break-inside: avoid;
+          }
+          .print-summary .print-chart-wrap { margin: 0 !important; }
+          .print-summary .print-after-chart { break-before: page; page-break-before: always; }
           .print-summary table { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
